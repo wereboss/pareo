@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pareo | Command Engine</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="sidebar">
+        <h2>Pareo</h2>
+        <ul class="nav">
+            <li class="nav-item active" onclick="switchTab(event, 'utilities')">Utilities</li>
+            <li class="nav-item" onclick="switchTab(event, 'tasks')">Ongoing Tasks</li>
+        </ul>
+    </div>
+    
+    <div class="main-content">
+        <div id="utilities" class="tab-content active">
+            <h3>Utilities</h3>
+            <div class="card">
+                <h4>Directory Listing</h4>
+                <p>Execute <code>ls -ltr</code> on the host machine.</p>
+                <button class="btn" onclick="executeCommand('ls')">Run Command</button>
+            </div>
+        </div>
+
+        <div id="tasks" class="tab-content">
+            <h3>Ongoing Tasks</h3>
+            <div class="table-container">
+                <table id="tasks-table">
+                    <thead>
+                        <tr>
+                            <th>Task ID</th>
+                            <th>Command</th>
+                            <th>Status</th>
+                            <th>Output / Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
