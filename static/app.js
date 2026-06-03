@@ -9,17 +9,34 @@ function switchTab(event, tabId) {
 
 // Trigger Backend Command
 async function executeCommand(cmd) {
+    // 1. Instantly switch to the tasks tab for immediate visual feedback
+    const tasksTab = document.querySelector('.nav-item:nth-child(2)');
+    switchTab({ currentTarget: tasksTab }, 'tasks');
+
+    // 2. Optimistically add a temporary placeholder row to the top of the table
+    const tbody = document.querySelector('#tasks-table tbody');
+    const tempRow = document.createElement('tr');
+    tempRow.innerHTML = `
+        <td><small>...</small></td>
+        <td><code>${cmd}</code></td>
+        <td><span class="badge pending">Starting</span></td>
+        <td><pre>Dispatching to engine...</pre></td>
+    `;
+    tbody.prepend(tempRow); 
+
     try {
-        const response = await fetch(`/api/execute/${cmd}`, { method: 'POST' });
-        const data = await response.json();
+        // 3. Send the request to the Pareo engine
+        await fetch(`/api/execute/${cmd}`, { method: 'POST' });
         
-        // Automatically switch to the tasks tab so the user sees the execution happen
-        const tasksTab = document.querySelector('.nav-item:nth-child(2)');
-        switchTab({ currentTarget: tasksTab }, 'tasks');
+        // 4. Immediately force a fetch of the true state 
+        // This overwrites the temporary row with the real task ID and status
+        fetchTasks();
         
     } catch (error) {
         console.error("Execution failed:", error);
-        alert("Failed to connect to the Pareo engine.");
+        tempRow.innerHTML = `
+            <td colspan="4" style="color: #e74c3c; text-align: center;"><strong>Error:</strong> Failed to connect to Pareo engine.</td>
+        `;
     }
 }
 
