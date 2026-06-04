@@ -1,0 +1,5 @@
+{
+    "ffmpeg": {
+        "default_flags": "-y"
+    }
+}

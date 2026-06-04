@@ -26,6 +26,7 @@ pareo/
     ├── index.html       # The main UI (Utilities and Ongoing Tasks views)
     ├── app.js           # Vanilla JS for DOM manipulation and API polling
     └── style.css        # Clean, minimal styling for the interface
+```
 
 ## ⚙️ Prerequisites
 
