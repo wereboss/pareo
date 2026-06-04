@@ -2,19 +2,24 @@ import asyncio
 import uuid
 from datetime import datetime
 
-# In-memory store for task states
 tasks_db = {}
+# Initialize the asynchronous queue
+task_queue = asyncio.Queue()
 
 async def _read_stream(stream, task_id):
-    """Reads an asyncio stream line by line and appends to the task output."""
+    """Reads stream in chunks to instantly capture FFMPEG's carriage returns (\r)."""
     while True:
-        line = await stream.readline()
-        if not line:
+        # Read up to 1KB of raw data at a time instead of waiting for a full line
+        chunk = await stream.read(1024)
+        if not chunk:
             break
-        decoded_line = line.decode('utf-8', errors='replace').strip()
-        if decoded_line:
-            # We unify all output into a single text block for easier UI rendering
-            tasks_db[task_id]["output"] += decoded_line + "\n"
+        
+        decoded_chunk = chunk.decode('utf-8', errors='replace')
+        # Translate carriage returns into standard newlines for the web UI
+        decoded_chunk = decoded_chunk.replace('\r', '\n')
+        
+        if decoded_chunk:
+            tasks_db[task_id]["output"] += decoded_chunk
 
 async def execute_command(task_id: str, command: str):
     """Runs the command asynchronously and streams output to tasks_db."""
@@ -27,13 +32,11 @@ async def execute_command(task_id: str, command: str):
             stderr=asyncio.subprocess.PIPE
         )
         
-        # Read stdout and stderr concurrently as the process runs
         await asyncio.gather(
             _read_stream(process.stdout, task_id),
             _read_stream(process.stderr, task_id)
         )
         
-        # Wait for the process to formally exit
         await process.wait()
         
         tasks_db[task_id]["status"] = "Completed" if process.returncode == 0 else "Failed"
@@ -46,8 +49,19 @@ async def execute_command(task_id: str, command: str):
     finally:
         tasks_db[task_id]["end_time"] = datetime.now().isoformat()
 
-def start_task(command: str) -> str:
-    """Initializes a new task in the database and returns its ID."""
+async def worker_loop():
+    """Background worker that continuously pulls and processes tasks sequentially."""
+    while True:
+        # Wait until a task is available in the queue
+        task_id, command = await task_queue.get()
+        try:
+            await execute_command(task_id, command)
+        finally:
+            # Tell the queue that the task is entirely finished
+            task_queue.task_done()
+
+async def start_task(command: str) -> str:
+    """Initializes a new task in the database and queues it for execution."""
     task_id = str(uuid.uuid4())
     
     tasks_db[task_id] = {
@@ -56,8 +70,10 @@ def start_task(command: str) -> str:
         "status": "Pending",
         "start_time": datetime.now().isoformat(),
         "end_time": None,
-        "output": "", # We removed 'error' as a separate field; everything streams here now
+        "output": "",
         "return_code": None
     }
     
+    # Push the task to the queue instead of running it immediately
+    await task_queue.put((task_id, command))
     return task_id

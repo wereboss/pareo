@@ -7,9 +7,11 @@ def load_config():
             return json.load(f)
     return {}
 
-def build_ffmpeg_command(input_path: str, output_path: str) -> str:
+def build_ffmpeg_command(input_path: str, output_path: str, profile_name: str = "Default") -> str:
     config = load_config()
-    flags = config.get("ffmpeg", {}).get("default_flags", "-y")
+    profiles = config.get("ffmpeg", {}).get("profiles", {})
     
-    # Wrap paths in quotes to handle spaces in file names securely
-    return f'ffmpeg {flags} -i "{input_path}" "{output_path}"'
+    custom_flags = profiles.get(profile_name, "")
+    
+    # Corrected order: -y (global) -> -i input -> custom_flags (output encoding) -> output
+    return f'ffmpeg -y -i "{input_path}" {custom_flags} "{output_path}"'

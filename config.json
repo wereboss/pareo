@@ -1,5 +1,12 @@
 {
     "ffmpeg": {
-        "default_flags": "-y"
+        "profiles": {
+            "Default": "",
+            "To HEVC AAC": "-c:v libx265 -crf 28 -c:a aac -b:a 128k",
+            "To HEVC MP3": "-c:v libx265 -crf 28 -preset fast -c:a libmp3lame -b:a 128k",
+            "To 480p HEVC": "-vf scale=-2:480 -c:v libx265 -crf 28 -c:a copy",
+            "To 720p HEVC": "-vf scale=-2:720 -c:v libx265 -tag:v hvc1 -crf 28 -c:a copy",
+            "To 4x Audio": "-af \"volume=4\" -c:v copy"
+        }
     }
 }

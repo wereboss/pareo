@@ -1,3 +1,6 @@
+// NEW: Track which tasks have an active, high-speed targeted poll running
+const activePolls = new Set();
+
 // Handle Navigation Toggling
 function switchTab(event, tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -7,36 +10,22 @@ function switchTab(event, tabId) {
     event.currentTarget.classList.add('active');
 }
 
+// Shows a temporary success message next to the button
+function showNotification(elementId) {
+    const el = document.getElementById(elementId);
+    el.style.opacity = '1';
+    setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
 // Trigger Backend Command
 async function executeCommand(cmd) {
-    // 1. Instantly switch to the tasks tab for immediate visual feedback
-    const tasksTab = document.querySelector('.nav-item:nth-child(2)');
-    switchTab({ currentTarget: tasksTab }, 'tasks');
-
-    // 2. Optimistically add a temporary placeholder row to the top of the table
-    const tbody = document.querySelector('#tasks-table tbody');
-    const tempRow = document.createElement('tr');
-    tempRow.innerHTML = `
-        <td><small>...</small></td>
-        <td><code>${cmd}</code></td>
-        <td><span class="badge pending">Starting</span></td>
-        <td><pre>Dispatching to engine...</pre></td>
-    `;
-    tbody.prepend(tempRow); 
-
     try {
-        // 3. Send the request to the Pareo engine
         await fetch(`/api/execute/${cmd}`, { method: 'POST' });
-        
-        // 4. Immediately force a fetch of the true state 
-        // This overwrites the temporary row with the real task ID and status
-        fetchTasks();
-        
+        showNotification('ls-notify');
+        fetchTasks(); // Force immediate background refresh
     } catch (error) {
         console.error("Execution failed:", error);
-        tempRow.innerHTML = `
-            <td colspan="4" style="color: #e74c3c; text-align: center;"><strong>Error:</strong> Failed to connect to Pareo engine.</td>
-        `;
+        alert("Failed to connect to the Pareo engine.");
     }
 }
 
@@ -52,25 +41,19 @@ async function fetchTasks() {
 }
 
 
-// Updated Render Tasks with targeted DOM updates and robust auto-scrolling
+// Updated Render Tasks
 function renderTasks(tasks) {
     const tbody = document.querySelector('#tasks-table tbody');
     const taskList = Object.values(tasks).sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
     taskList.forEach(task => {
-        // Attempt to find the existing row
         let tr = document.getElementById(`row-${task.task_id}`);
         
         let displayData = '';
-        if (task.status === 'Failed' && !task.output) {
-            displayData = task.error || 'Execution failed.';
-        } else if (task.output) {
-            displayData = task.output; 
-        } else {
-            displayData = '...';
-        }
+        if (task.status === 'Failed' && !task.output) displayData = task.error || 'Execution failed.';
+        else if (task.output) displayData = task.output; 
+        else displayData = '...';
 
-        // 1. If the row doesn't exist, create its skeleton
         if (!tr) {
             tr = document.createElement('tr');
             tr.id = `row-${task.task_id}`;
@@ -80,90 +63,135 @@ function renderTasks(tasks) {
                 <td><span class="status-badge badge"></span></td>
                 <td><pre class="log-output"></pre></td>
             `;
-            
-            // Clean up the optimistic "Starting" placeholder once real data arrives
             if (tbody.firstElementChild && !tbody.firstElementChild.id) {
                 tbody.firstElementChild.remove();
             }
             tbody.appendChild(tr);
         }
 
-        // 2. Update existing elements individually (prevents layout thrashing)
         const badge = tr.querySelector('.status-badge');
         const preElement = tr.querySelector('.log-output');
 
         badge.className = `status-badge badge ${task.status.toLowerCase()}`;
         badge.textContent = task.status;
 
-        // 3. Only update text and scroll if new data actually arrived
         if (preElement.textContent !== displayData) {
             preElement.textContent = displayData;
-            
-            // Auto-scroll logic
             if (task.status === 'Running') {
-                // requestAnimationFrame ensures the browser paints the new text BEFORE calculating height
-                requestAnimationFrame(() => {
-                    preElement.scrollTop = preElement.scrollHeight;
-                });
+                setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
             }
+        }
+
+        // NEW: If the task is running and we aren't already actively polling it, start the targeted poll
+        if (task.status === 'Running' && !activePolls.has(task.task_id)) {
+            activePolls.add(task.task_id);
+            pollSpecificTask(task.task_id);
         }
     });
 }
 
-// Trigger FFMPEG Command
+// UPDATE: Trigger FFMPEG Command
 async function executeFfmpeg() {
     const inputPath = document.getElementById('ffmpeg-input').value.trim();
     const outputPath = document.getElementById('ffmpeg-output').value.trim();
+    // Grab the selected profile
+    const profile = document.getElementById('ffmpeg-profile').value; 
 
     if (!inputPath || !outputPath) {
         alert("Please provide both an input and output path.");
         return;
     }
 
-    // 1. Instantly switch to the tasks tab
-    const tasksTab = document.querySelector('.nav-item:nth-child(2)');
-    switchTab({ currentTarget: tasksTab }, 'tasks');
-
-    // 2. Optimistic UI placeholder
-    const tbody = document.querySelector('#tasks-table tbody');
-    const tempRow = document.createElement('tr');
-    tempRow.innerHTML = `
-        <td><small>...</small></td>
-        <td><code>ffmpeg -i "${inputPath}" "${outputPath}"</code></td>
-        <td><span class="badge pending">Starting</span></td>
-        <td><pre>Dispatching FFMPEG to engine...</pre></td>
-    `;
-    tbody.prepend(tempRow); 
-
     try {
-        // 3. Send the JSON payload to the new FFMPEG endpoint
         await fetch('/api/execute/ffmpeg', { 
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                input_path: inputPath,
-                output_path: outputPath
+            headers: { 'Content-Type': 'application/json' },
+            // Add the profile to the JSON payload
+            body: JSON.stringify({ 
+                input_path: inputPath, 
+                output_path: outputPath,
+                profile: profile
             })
         });
         
-        // 4. Clear the input fields for the next run
         document.getElementById('ffmpeg-input').value = '';
         document.getElementById('ffmpeg-output').value = '';
-
-        // 5. Force immediate fetch
-        fetchTasks();
+        
+        showNotification('ffmpeg-notify');
+        fetchTasks(); 
         
     } catch (error) {
         console.error("Execution failed:", error);
-        tempRow.innerHTML = `
-            <td colspan="4" style="color: #e74c3c; text-align: center;"><strong>Error:</strong> Failed to connect to Pareo engine.</td>
-        `;
+        alert("Failed to queue FFMPEG task.");
+    }
+}
+
+// NEW FUNCTION: Fetch and populate FFMPEG profiles
+async function fetchProfiles() {
+    try {
+        const response = await fetch('/api/config/ffmpeg');
+        const data = await response.json();
+        
+        const select = document.getElementById('ffmpeg-profile');
+        select.innerHTML = ''; // Clear loading text
+        
+        data.profiles.forEach(profileName => {
+            const option = document.createElement('option');
+            option.value = profileName;
+            option.textContent = profileName;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error("Failed to load profiles:", error);
+        document.getElementById('ffmpeg-profile').innerHTML = '<option value="Default">Default</option>';
+    }
+}
+
+// NEW FUNCTION: High-speed asynchronous targeted row update
+async function pollSpecificTask(taskId) {
+    const row = document.getElementById(`row-${taskId}`);
+    if (!row) return;
+
+    try {
+        // Fetch only this specific task
+        const response = await fetch(`/api/tasks/${taskId}`);
+        const task = await response.json();
+        
+        if (task.error) return;
+
+        const badge = row.querySelector('.status-badge');
+        const preElement = row.querySelector('.log-output');
+
+        // Update the badge
+        badge.className = `status-badge badge ${task.status.toLowerCase()}`;
+        badge.textContent = task.status;
+
+        // Update the log output and handle auto-scroll
+        if (preElement.textContent !== task.output) {
+            preElement.textContent = task.output || '...';
+            if (task.status === 'Running') {
+                setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
+            }
+        }
+
+        // If it's still running, check again in 1 second
+        if (task.status === 'Running') {
+            setTimeout(() => pollSpecificTask(taskId), 1000);
+        } else {
+            // Once finished, remove from tracking and do one final global sync
+            activePolls.delete(taskId);
+            fetchTasks(); 
+        }
+
+    } catch (error) {
+        console.error(`Failed to poll task ${taskId}:`, error);
     }
 }
 
 
 // Start the polling loop (every 2 seconds)
-setInterval(fetchTasks, 2000);
+setInterval(fetchTasks, 150000);
 fetchTasks(); // Initial fetch on load
+
+// ADD THIS at the very bottom of app.js (below fetchTasks())
+fetchProfiles();

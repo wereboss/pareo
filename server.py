@@ -1,60 +1,72 @@
 import os
-from fastapi import FastAPI, BackgroundTasks
+import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-import executor
-
-app = FastAPI(title="Pareo API")
-
-@app.post("/api/execute/ls")
-async def execute_ls(background_tasks: BackgroundTasks):
-    """
-    Triggers the 'ls -ltr' command.
-    Returns immediately while the command runs in the background.
-    """
-    command = "ls -ltr"
-    
-    # 1. Register the task in the database and get an ID
-    task_id = executor.start_task(command)
-    
-    # 2. Hand the execution off to FastAPI's background thread
-    background_tasks.add_task(executor.execute_command, task_id, command)
-    
-    # 3. Return the ID immediately so the frontend can start polling
-    return {"task_id": task_id, "message": f"Command '{command}' scheduled."}
-
 from pydantic import BaseModel
+import executor
 import command_builder
 
-# Define the expected JSON payload for FFMPEG
+# Manage the background worker lifecycle
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Boot up the queue worker when the server starts
+    worker_task = asyncio.create_task(executor.worker_loop())
+    yield
+    # Cancel the worker when the server stops
+    worker_task.cancel()
+
+app = FastAPI(title="Pareo API", lifespan=lifespan)
+
+# 1. Update the Pydantic model to include an optional profile
 class FfmpegRequest(BaseModel):
     input_path: str
     output_path: str
+    profile: str = "Default"
 
+@app.post("/api/execute/ls")
+async def execute_ls():
+    """Queues the 'ls -ltr' command."""
+    # Notice we await start_task now
+    task_id = await executor.start_task("ls -ltr")
+    return {"task_id": task_id, "message": "Command queued."}
+
+# 2. Add this NEW endpoint right before the @app.post("/api/execute/ls") route
+@app.get("/api/config/ffmpeg")
+def get_ffmpeg_config():
+    """Serves the available FFMPEG profiles from config.json to the frontend."""
+    import command_builder
+    config = command_builder.load_config()
+    profiles = config.get("ffmpeg", {}).get("profiles", {})
+    # Return just the profile names (keys) for the dropdown
+    return {"profiles": list(profiles.keys())}
+
+# 3. Update the execute_ffmpeg route to pass the profile to the builder
 @app.post("/api/execute/ffmpeg")
-async def execute_ffmpeg(request: FfmpegRequest, background_tasks: BackgroundTasks):
-    """
-    Triggers an FFMPEG conversion command based on user inputs.
-    """
-    # 1. Build the dynamic command
-    command = command_builder.build_ffmpeg_command(request.input_path, request.output_path)
-    
-    # 2. Register the task
-    task_id = executor.start_task(command)
-    
-    # 3. Hand off to background execution
-    background_tasks.add_task(executor.execute_command, task_id, command)
-    
-    return {"task_id": task_id, "message": "FFMPEG command scheduled."}
+async def execute_ffmpeg(request: FfmpegRequest):
+    """Queues an FFMPEG conversion command with a specific profile."""
+    command = command_builder.build_ffmpeg_command(
+        request.input_path, 
+        request.output_path, 
+        request.profile
+    )
+    task_id = await executor.start_task(command)
+    return {"task_id": task_id, "message": "FFMPEG command queued."}
 
 @app.get("/api/tasks")
 def get_tasks():
-    """
-    Retrieves the current state of all tasks in the in-memory database.
-    """
     return executor.tasks_db
 
-# Note: We will uncomment the line below once we build the frontend in the next step.
-# It tells FastAPI to serve our HTML/JS/CSS files from the /static directory.
+@app.get("/api/tasks/{task_id}")
+def get_single_task(task_id: str):
+    """Retrieves the real-time state of a single specific task."""
+    if task_id in executor.tasks_db:
+        return executor.tasks_db[task_id]
+    return {"error": "Task not found"}
 
 if os.path.exists("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+
+
+

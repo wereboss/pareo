@@ -23,6 +23,7 @@
                 <h4>Directory Listing</h4>
                 <p>Execute <code>ls -ltr</code> on the host machine.</p>
                 <button class="btn" onclick="executeCommand('ls')">Run Command</button>
+                <span id="ls-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
             </div>
 
             <div class="card" style="margin-top: 20px;">
@@ -32,11 +33,18 @@
                     <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
                     <input type="text" id="ffmpeg-input" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                 </div>
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Conversion Profile</label>
+                    <select id="ffmpeg-profile" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                        <option value="Default">Loading profiles...</option>
+                    </select>
+                </div>                
                 <div style="margin-bottom: 15px;">
                     <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
                     <input type="text" id="ffmpeg-output" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                 </div>
-                <button class="btn" onclick="executeFfmpeg()">Run FFMPEG</button>
+                <button class="btn" onclick="executeFfmpeg()">Queue FFMPEG</button>
+                <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
             </div>
         </div>
 
