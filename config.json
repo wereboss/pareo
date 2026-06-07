@@ -1,12 +1,36 @@
 {
     "ffmpeg": {
         "profiles": {
-            "Default": "",
-            "To HEVC AAC": "-c:v libx265 -crf 28 -c:a aac -b:a 128k",
-            "To HEVC MP3": "-c:v libx265 -crf 28 -preset fast -c:a libmp3lame -b:a 128k",
-            "To 480p HEVC": "-vf scale=-2:480 -c:v libx265 -crf 28 -c:a copy",
-            "To 720p HEVC": "-vf scale=-2:720 -c:v libx265 -tag:v hvc1 -crf 28 -c:a copy",
-            "To 4x Audio": "-af \"volume=4\" -c:v copy"
+            "To HEVC AAC": {
+                "modes": ["single", "batch"],
+                "flags": "-c:v libx265 -crf 28 -c:a aac -b:a 128k",
+                "allowed_extensions": [".mp4", ".mkv"]
+            },
+            "To HEVC MP3": {
+                "modes": ["single", "batch"],
+                "flags": "-c:v libx265 -crf 28 -preset fast -c:a libmp3lame -b:a 128k",
+                "allowed_extensions": [".mp4", ".mkv"]
+            },
+            "To 480p HEVC": {
+                "modes": ["single", "batch"],
+                "flags": "-vf scale=-2:480 -c:v libx265 -crf 28 -c:a copy",
+                "allowed_extensions": [".mp4", ".mkv"]
+            },
+            "To 720p HEVC": {
+                "modes": ["single", "batch"],
+                "flags": "-vf scale=-2:720 -c:v libx265 -tag:v hvc1 -crf 28 -c:a copy",
+                "allowed_extensions": [".mp4", ".mkv"]
+            },
+            "To 4x Audio Boost": {
+                "modes": ["single", "batch"],
+                "flags": "-af \"volume=4\" -c:v copy",
+                "allowed_extensions": [".mp4", ".mkv", ".avi"]
+            },
+            "Extract Audio to MP3": {
+                "modes": ["batch"],
+                "flags": "-q:a 0 -map a",
+                "allowed_extensions": [".mp3"]
+            }
         }
     }
 }

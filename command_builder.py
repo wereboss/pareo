@@ -7,11 +7,15 @@ def load_config():
             return json.load(f)
     return {}
 
-def build_ffmpeg_command(input_path: str, output_path: str, profile_name: str = "Default") -> str:
+def build_ffmpeg_command(input_path: str, output_path: str, profile_name: str) -> str:
     config = load_config()
     profiles = config.get("ffmpeg", {}).get("profiles", {})
     
-    custom_flags = profiles.get(profile_name, "")
+    # 1. Safely get the profile object
+    profile_data = profiles.get(profile_name, {})
     
-    # Corrected order: -y (global) -> -i input -> custom_flags (output encoding) -> output
+    # 2. Extract the flags (fallback to empty string if missing)
+    custom_flags = profile_data.get("flags", "")
+    
+    # 3. Construct the secure command
     return f'ffmpeg -y -i "{input_path}" {custom_flags} "{output_path}"'

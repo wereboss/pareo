@@ -29,22 +29,40 @@
             <div class="card" style="margin-top: 20px;">
                 <h4>Media Processing (FFMPEG)</h4>
                 <p>Convert video or audio files on the host machine.</p>
-                <div style="margin-bottom: 10px;">
-                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
-                    <input type="text" id="ffmpeg-input" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                </div>
+
                 <div style="margin-bottom: 10px;">
                     <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Conversion Profile</label>
-                    <select id="ffmpeg-profile" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                    <select id="ffmpeg-profile" onchange="onProfileChange()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                         <option value="Default">Loading profiles...</option>
                     </select>
-                </div>                
+                </div>
+
                 <div style="margin-bottom: 15px;">
-                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
+                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Execution Mode</label>
+                    <select id="ffmpeg-mode" onchange="updateFfmpegUI()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background-color: #f8f9fa;">
+                        </select>
+                </div>
+
+                <div style="margin-bottom: 10px;">
+                    <label id="lbl-ffmpeg-input" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
+                    <input type="text" id="ffmpeg-input" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label id="lbl-ffmpeg-output" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
                     <input type="text" id="ffmpeg-output" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                 </div>
-                <button class="btn" onclick="executeFfmpeg()">Queue FFMPEG</button>
-                <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+
+                <div id="batch-ext-container" style="margin-bottom: 15px; display: none;">
+                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Extension</label>
+                    <select id="ffmpeg-ext" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                        </select>
+                </div>
+
+                <div>
+                    <button class="btn" onclick="executeFfmpeg()">Queue FFMPEG</button>
+                    <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                </div>
             </div>
         </div>
 

@@ -1,5 +1,7 @@
 // NEW: Track which tasks have an active, high-speed targeted poll running
 const activePolls = new Set();
+// NEW: Global state to hold the pipeline configuration
+let ffmpegConfig = {};
 
 // Handle Navigation Toggling
 function switchTab(event, tabId) {
@@ -90,15 +92,17 @@ function renderTasks(tasks) {
     });
 }
 
-// UPDATE: Trigger FFMPEG Command
+// UPDATED: Execute based on the unified API contract
 async function executeFfmpeg() {
-    const inputPath = document.getElementById('ffmpeg-input').value.trim();
-    const outputPath = document.getElementById('ffmpeg-output').value.trim();
-    // Grab the selected profile
+    const inputTarget = document.getElementById('ffmpeg-input').value.trim();
+    const outputTarget = document.getElementById('ffmpeg-output').value.trim();
     const profile = document.getElementById('ffmpeg-profile').value; 
+    const mode = document.getElementById('ffmpeg-mode').value;
+    // Fallback to .mp4 if the dropdown is somehow empty
+    const ext = document.getElementById('ffmpeg-ext').value || '.mp4'; 
 
-    if (!inputPath || !outputPath) {
-        alert("Please provide both an input and output path.");
+    if (!inputTarget || !outputTarget) {
+        alert("Please provide both input and output destinations.");
         return;
     }
 
@@ -106,11 +110,12 @@ async function executeFfmpeg() {
         await fetch('/api/execute/ffmpeg', { 
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            // Add the profile to the JSON payload
             body: JSON.stringify({ 
-                input_path: inputPath, 
-                output_path: outputPath,
-                profile: profile
+                input_target: inputTarget, 
+                output_target: outputTarget,
+                profile: profile,
+                mode: mode,
+                output_extension: ext
             })
         });
         
@@ -132,18 +137,21 @@ async function fetchProfiles() {
         const response = await fetch('/api/config/ffmpeg');
         const data = await response.json();
         
-        const select = document.getElementById('ffmpeg-profile');
-        select.innerHTML = ''; // Clear loading text
+        ffmpegConfig = data.profiles; // Store the full config object
         
-        data.profiles.forEach(profileName => {
+        const select = document.getElementById('ffmpeg-profile');
+        select.innerHTML = ''; 
+        
+        Object.keys(ffmpegConfig).forEach(profileName => {
             const option = document.createElement('option');
             option.value = profileName;
             option.textContent = profileName;
             select.appendChild(option);
         });
+        
+        onProfileChange(); // Force the UI to shape itself to the first profile
     } catch (error) {
         console.error("Failed to load profiles:", error);
-        document.getElementById('ffmpeg-profile').innerHTML = '<option value="Default">Default</option>';
     }
 }
 
@@ -185,6 +193,65 @@ async function pollSpecificTask(taskId) {
 
     } catch (error) {
         console.error(`Failed to poll task ${taskId}:`, error);
+    }
+}
+
+// NEW: Handle Profile Selection
+function onProfileChange() {
+    const profileName = document.getElementById('ffmpeg-profile').value;
+    const profileData = ffmpegConfig[profileName];
+    if (!profileData) return;
+
+    const modeSelect = document.getElementById('ffmpeg-mode');
+    modeSelect.innerHTML = ''; 
+
+    // Only populate modes explicitly permitted by the config
+    profileData.modes.forEach(mode => {
+        const option = document.createElement('option');
+        option.value = mode;
+        option.textContent = mode === 'single' ? 'Single File' : 'Batch (Wildcard)';
+        modeSelect.appendChild(option);
+    });
+
+    updateFfmpegUI(); // Update text labels based on the active mode
+}
+
+// NEW: Update text labels and extension constraints
+function updateFfmpegUI() {
+    const mode = document.getElementById('ffmpeg-mode').value;
+    const profileName = document.getElementById('ffmpeg-profile').value;
+    const profileData = ffmpegConfig[profileName];
+    
+    const lblInput = document.getElementById('lbl-ffmpeg-input');
+    const inputField = document.getElementById('ffmpeg-input');
+    const lblOutput = document.getElementById('lbl-ffmpeg-output');
+    const outputField = document.getElementById('ffmpeg-output');
+    const extContainer = document.getElementById('batch-ext-container');
+    const extSelect = document.getElementById('ffmpeg-ext');
+
+    if (mode === 'batch') {
+        lblInput.textContent = "Input Pattern (Wildcard)";
+        inputField.placeholder = "/source/media/*.mkv";
+        lblOutput.textContent = "Output Directory";
+        outputField.placeholder = "/dest/media/";
+        
+        // Restrict extensions to those defined in config
+        extSelect.innerHTML = '';
+        if (profileData && profileData.allowed_extensions) {
+            profileData.allowed_extensions.forEach(ext => {
+                const opt = document.createElement('option');
+                opt.value = ext;
+                opt.textContent = ext;
+                extSelect.appendChild(opt);
+            });
+        }
+        extContainer.style.display = "block";
+    } else {
+        lblInput.textContent = "Input Path";
+        inputField.placeholder = "/path/to/input.mp4";
+        lblOutput.textContent = "Output Path";
+        outputField.placeholder = "/path/to/output.mkv";
+        extContainer.style.display = "none";
     }
 }
 
