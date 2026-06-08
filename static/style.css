@@ -86,3 +86,49 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* --- File Explorer Modal --- */
+.modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+}
+
+.modal-card {
+    background: white; width: 800px; max-width: 90%; height: 80vh;
+    border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    display: flex; flex-direction: column; overflow: hidden;
+}
+
+.modal-header {
+    padding: 15px 20px; background: #f8f9fa; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+}
+
+.modal-header h4 { margin: 0; color: var(--text); font-size: 1.1em; }
+.close-btn { background: none; border: none; font-size: 1.5em; cursor: pointer; color: #888; }
+.close-btn:hover { color: #e74c3c; }
+
+.modal-body {
+    flex-grow: 1; overflow-y: auto; padding: 10px; background: #fff;
+}
+
+.file-item {
+    display: flex; align-items: center; padding: 8px 10px;
+    border-bottom: 1px solid #f1f1f1; transition: background 0.2s;
+}
+.file-item:hover { background: #f8f9fa; }
+.file-item input[type="checkbox"] { margin-right: 15px; cursor: pointer; }
+.file-icon { margin-right: 10px; font-size: 1.2em; }
+.file-name { font-family: monospace; font-size: 0.95em; flex-grow: 1; word-break: break-all; }
+.file-size { font-size: 0.8em; color: #888; white-space: nowrap; }
+
+.modal-footer {
+    padding: 15px 20px; background: #f8f9fa; border-top: 1px solid var(--border);
+}
+
+.action-bar { display: flex; gap: 10px; align-items: center; width: 100%; }
+.action-bar select, .action-bar input {
+    padding: 8px; border: 1px solid var(--border); border-radius: 4px;
+}

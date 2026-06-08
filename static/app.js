@@ -92,6 +92,144 @@ function renderTasks(tasks) {
     });
 }
 
+// NEW: Global state for File Operations Config
+let fsConfig = {};
+
+// Fetch FS Config on load
+async function fetchFsConfig() {
+    try {
+        const response = await fetch('/api/config/fs');
+        const data = await response.json();
+        fsConfig = data.actions || {};
+        
+        const select = document.getElementById('fs-action-select');
+        Object.keys(fsConfig).forEach(actionName => {
+            const opt = document.createElement('option');
+            opt.value = actionName;
+            opt.textContent = actionName;
+            select.appendChild(opt);
+        });
+    } catch (error) {
+        console.error("Failed to load FS config:", error);
+    }
+}
+
+// -----------------------------------------------------
+// FILE EXPLORER MODAL LOGIC
+// -----------------------------------------------------
+
+async function openExplorer() {
+    const targetPath = document.getElementById('fs-explore-path').value.trim() || '/';
+    const modal = document.getElementById('explorer-modal');
+    const title = document.getElementById('explorer-title');
+    const list = document.getElementById('explorer-list');
+
+    modal.style.display = 'flex'; // Show modal
+    title.textContent = `Browsing: ${targetPath}`;
+    list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Loading...</div>';
+
+    try {
+        const response = await fetch(`/api/fs/list?target_path=${encodeURIComponent(targetPath)}`);
+        const data = await response.json();
+
+        if (response.ok) {
+            renderExplorerList(data.items);
+        } else {
+            list.innerHTML = `<div style="padding: 20px; color: #e74c3c;">Error: ${data.detail || 'Could not load directory'}</div>`;
+        }
+    } catch (error) {
+        list.innerHTML = `<div style="padding: 20px; color: #e74c3c;">Connection Error.</div>`;
+    }
+}
+
+function closeExplorer() {
+    document.getElementById('explorer-modal').style.display = 'none';
+    // Reset inputs
+    document.getElementById('fs-action-select').value = '';
+    onFsActionChange(); 
+}
+
+function renderExplorerList(items) {
+    const list = document.getElementById('explorer-list');
+    list.innerHTML = ''; // Clear loading
+
+    if (items.length === 0) {
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Directory is empty.</div>';
+        return;
+    }
+
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        
+        const icon = item.is_dir ? '📁' : '📄';
+        const sizeStr = item.is_dir ? '' : `(${(item.size / 1024 / 1024).toFixed(2)} MB)`;
+
+        div.innerHTML = `
+            <input type="checkbox" class="fs-checkbox" value="${item.path}">
+            <span class="file-icon">${icon}</span>
+            <span class="file-name">${item.name}</span>
+            <span class="file-size">${sizeStr}</span>
+        `;
+        list.appendChild(div);
+    });
+}
+
+// Dynamically show/hide destination input based on Config
+function onFsActionChange() {
+    const action = document.getElementById('fs-action-select').value;
+    const destInput = document.getElementById('fs-dest-path');
+    
+    if (action && fsConfig[action] && fsConfig[action].requires_destination) {
+        destInput.style.display = 'block';
+    } else {
+        destInput.style.display = 'none';
+        destInput.value = ''; // clear it so it doesn't accidentally send
+    }
+}
+
+async function executeFsBatch() {
+    const action = document.getElementById('fs-action-select').value;
+    const destInput = document.getElementById('fs-dest-path').value.trim();
+    
+    // Get all checked boxes
+    const checkboxes = document.querySelectorAll('.fs-checkbox:checked');
+    const sourcePaths = Array.from(checkboxes).map(cb => cb.value);
+
+    if (sourcePaths.length === 0) {
+        alert("Please select at least one file or folder.");
+        return;
+    }
+    if (!action) {
+        alert("Please select an action to perform.");
+        return;
+    }
+    if (fsConfig[action].requires_destination && !destInput) {
+        alert(`The action '${action}' requires a destination path.`);
+        return;
+    }
+
+    try {
+        await fetch('/api/execute/fs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: action,
+                source_paths: sourcePaths,
+                destination_path: destInput
+            })
+        });
+
+        closeExplorer();
+        showNotification('fs-notify');
+        fetchTasks(); // Immediately update the UI queue
+
+    } catch (error) {
+        console.error("Execution failed:", error);
+        alert("Failed to queue file operations.");
+    }
+}
+
 // UPDATED: Execute based on the unified API contract
 async function executeFfmpeg() {
     const inputTarget = document.getElementById('ffmpeg-input').value.trim();
@@ -256,9 +394,12 @@ function updateFfmpegUI() {
 }
 
 
-// Start the polling loop (every 2 seconds)
-setInterval(fetchTasks, 150000);
 fetchTasks(); // Initial fetch on load
 
 // ADD THIS at the very bottom of app.js (below fetchTasks())
 fetchProfiles();
+fetchFsConfig(); // NEW: Load FS Schema
+
+
+// Start the polling loop (every 2 seconds)
+setInterval(fetchTasks, 150000);

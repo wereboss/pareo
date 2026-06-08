@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from typing import List, Optional
 import executor
 import command_builder
 
@@ -26,6 +27,11 @@ class FfmpegRequest(BaseModel):
     profile: str = "Standard HEVC"
     mode: str = "single" 
     output_extension: str = ".mp4"
+
+class FsRequest(BaseModel):
+    action: str
+    source_paths: List[str]
+    destination_path: Optional[str] = ""
 
 @app.post("/api/execute/ls")
 async def execute_ls():
@@ -98,6 +104,63 @@ async def execute_ffmpeg(request: FfmpegRequest):
             queued_count += 1
             
     return {"message": f"Successfully queued {queued_count} task(s).", "queued_count": queued_count}
+
+# --- FILE SYSTEM ENDPOINTS ---
+
+@app.get("/api/config/fs")
+def get_fs_config():
+    """Serves the File Operations config schema."""
+    config = command_builder.load_config()
+    return config.get("file_operations", {})
+
+@app.get("/api/fs/list")
+def list_directory(target_path: str = "/"):
+    """Returns a JSON array of files and folders for the Explorer Modal."""
+    try:
+        p = Path(target_path)
+        if not p.exists() or not p.is_dir():
+            raise HTTPException(status_code=404, detail="Directory not found or invalid.")
+        
+        items = []
+        for child in p.iterdir():
+            try:
+                items.append({
+                    "name": child.name,
+                    "path": str(child.absolute()),
+                    "is_dir": child.is_dir(),
+                    "size": child.stat().st_size if child.is_file() else 0
+                })
+            except PermissionError:
+                pass # Gracefully skip files Pareo doesn't have read access to
+                
+        # Sort folders first, then alphabetically
+        items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+        return {"target_path": str(p.absolute()), "items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/execute/fs")
+async def execute_fs_action(request: FsRequest):
+    """Loops through source files and queues the requested operation."""
+    config = command_builder.load_config()
+    fs_config = config.get("file_operations", {}).get("actions", {})
+    
+    if request.action not in fs_config:
+        raise HTTPException(status_code=400, detail="Invalid action selected.")
+        
+    action_data = fs_config[request.action]
+    
+    # Validation: Ensure user provided a destination if the config demands one
+    if action_data.get("requires_destination") and not request.destination_path:
+        raise HTTPException(status_code=400, detail=f"Action '{request.action}' requires a destination path.")
+        
+    queued_count = 0
+    for src in request.source_paths:
+        cmd = command_builder.build_fs_command(request.action, src, request.destination_path)
+        await executor.start_task(cmd)
+        queued_count += 1
+        
+    return {"message": f"Successfully queued {queued_count} file operations.", "queued_count": queued_count}
 
 @app.get("/api/tasks")
 def get_tasks():

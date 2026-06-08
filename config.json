@@ -30,7 +30,32 @@
                 "modes": ["batch"],
                 "flags": "-q:a 0 -map a",
                 "allowed_extensions": [".mp3"]
+            },
+            "Extract Subtitles to SRT": {
+                "modes": ["single", "batch"],
+                "flags": "-map 0:s:0",
+                "allowed_extensions": [".srt"]
             }
         }
-    }
+    },
+    "file_operations": {
+        "actions": {
+            "Copy": {
+                "command_template": "cp -r \"{source}\" \"{dest}\"",
+                "requires_destination": true
+            },
+            "Move": {
+                "command_template": "mv \"{source}\" \"{dest}\"",
+                "requires_destination": true
+            },
+            "Delete": {
+                "command_template": "rm -rf \"{source}\"",
+                "requires_destination": false
+            },
+            "Compress (Tar.gz)": {
+                "command_template": "tar -czvf \"{source}.tar.gz\" \"{source}\"",
+                "requires_destination": false
+            }
+        }
+    }    
 }
