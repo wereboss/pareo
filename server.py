@@ -9,10 +9,18 @@ from pydantic import BaseModel
 from typing import List, Optional
 import executor
 import command_builder
+import database
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Boot up the queue worker when the server starts
+    # 1. Boot up the SQLite database
+    database.init_db()
+    
+    # 2. Recover State (Mark orphaned tasks as failed, requeue pending)
+    recovered_count = executor.recover_tasks()
+    print(f"[*] Pareo Engine Boot: Recovered {recovered_count} pending tasks.")
+    
+    # 3. Boot up the background queue worker
     worker_task = asyncio.create_task(executor.worker_loop())
     yield
     # Cancel the worker when the server stops
@@ -164,12 +172,15 @@ async def execute_fs_action(request: FsRequest):
 
 @app.get("/api/tasks")
 def get_tasks():
-    return executor.tasks_db
+    """Retrieves all historical tasks from SQLite."""
+    return database.get_all_tasks()
 
 @app.get("/api/tasks/{task_id}")
 def get_single_task(task_id: str):
-    if task_id in executor.tasks_db:
-        return executor.tasks_db[task_id]
+    """Retrieves high-speed streaming data from SQLite."""
+    task = database.get_task(task_id)
+    if task:
+        return task
     return {"error": "Task not found"}
 
 if os.path.exists("static"):

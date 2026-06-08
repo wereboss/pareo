@@ -37,11 +37,16 @@ body { display: flex; height: 100vh; background-color: var(--bg-color); color: v
 /* Force table to respect our specific column widths */
 table { width: 100%; border-collapse: collapse; text-align: left; table-layout: fixed; }
 
-/* Set specific column widths: Output increased to 65% */
-th:nth-child(1), td:nth-child(1) { width: 10%; } /* Task ID */
-th:nth-child(2), td:nth-child(2) { width: 15%; } /* Command (reduced by 5%) */
-th:nth-child(3), td:nth-child(3) { width: 10%; } /* Status */
-th:nth-child(4), td:nth-child(4) { width: 65%; } /* Output / Error (increased by 5%) */
+/* Set specific column widths for the 5-column layout */
+th:nth-child(1), td:nth-child(1) { width: 8%; }  /* Task ID */
+th:nth-child(2), td:nth-child(2) { width: 12%; } /* Timeline */
+th:nth-child(3), td:nth-child(3) { width: 15%; } /* Command */
+th:nth-child(4), td:nth-child(4) { width: 10%; } /* Status */
+th:nth-child(5), td:nth-child(5) { width: 55%; } /* Output / Error */
+
+/* Helper class for the new timeline column */
+.task-timeline { font-size: 0.85em; color: #666; white-space: nowrap; }
+.task-timeline strong { color: var(--text); }
 
 th, td { padding: 15px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { background-color: #f8f9fa; font-weight: 600; }

@@ -3,6 +3,17 @@ const activePolls = new Set();
 // NEW: Global state to hold the pipeline configuration
 let ffmpegConfig = {};
 
+// NEW: Helper function to make ISO timestamps human-readable (e.g., Jun 08, 14:30:00)
+function formatTime(isoString) {
+    if (!isoString) return '--';
+    const d = new Date(isoString);
+    return d.toLocaleString(undefined, { 
+        month: 'short', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', second: '2-digit', 
+        hour12: false 
+    });
+}
+
 // Handle Navigation Toggling
 function switchTab(event, tabId) {
     document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -43,28 +54,35 @@ async function fetchTasks() {
 }
 
 
-// Updated Render Tasks
 function renderTasks(tasks) {
     const tbody = document.querySelector('#tasks-table tbody');
+    // Ensure chronological sorting by start_time (newest first)
     const taskList = Object.values(tasks).sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
     taskList.forEach(task => {
         let tr = document.getElementById(`row-${task.task_id}`);
         
         let displayData = '';
-        if (task.status === 'Failed' && !task.output) displayData = task.error || 'Execution failed.';
+        if (task.status.includes('Failed') && !task.output) displayData = task.error || 'Execution failed.';
         else if (task.output) displayData = task.output; 
         else displayData = '...';
+
+        const timeHtml = `
+            <div><strong>S:</strong> ${formatTime(task.start_time)}</div>
+            <div><strong>E:</strong> ${formatTime(task.end_time)}</div>
+        `;
 
         if (!tr) {
             tr = document.createElement('tr');
             tr.id = `row-${task.task_id}`;
             tr.innerHTML = `
                 <td><small>${task.task_id.split('-')[0]}</small></td>
+                <td class="task-timeline">${timeHtml}</td>
                 <td><code>${task.command}</code></td>
                 <td><span class="status-badge badge"></span></td>
                 <td><pre class="log-output"></pre></td>
             `;
+            // Add new rows to the top of the table
             if (tbody.firstElementChild && !tbody.firstElementChild.id) {
                 tbody.firstElementChild.remove();
             }
@@ -74,9 +92,12 @@ function renderTasks(tasks) {
         const badge = tr.querySelector('.status-badge');
         const preElement = tr.querySelector('.log-output');
 
-        badge.className = `status-badge badge ${task.status.toLowerCase()}`;
+        // Update badge dynamically
+        const badgeClass = task.status.split(' ')[0].toLowerCase(); // Handles "Failed (Interrupted)"
+        badge.className = `status-badge badge ${badgeClass}`;
         badge.textContent = task.status;
 
+        // Update output dynamically
         if (preElement.textContent !== displayData) {
             preElement.textContent = displayData;
             if (task.status === 'Running') {
@@ -84,7 +105,6 @@ function renderTasks(tasks) {
             }
         }
 
-        // NEW: If the task is running and we aren't already actively polling it, start the targeted poll
         if (task.status === 'Running' && !activePolls.has(task.task_id)) {
             activePolls.add(task.task_id);
             pollSpecificTask(task.task_id);
@@ -293,13 +313,11 @@ async function fetchProfiles() {
     }
 }
 
-// NEW FUNCTION: High-speed asynchronous targeted row update
 async function pollSpecificTask(taskId) {
     const row = document.getElementById(`row-${taskId}`);
     if (!row) return;
 
     try {
-        // Fetch only this specific task
         const response = await fetch(`/api/tasks/${taskId}`);
         const task = await response.json();
         
@@ -307,12 +325,18 @@ async function pollSpecificTask(taskId) {
 
         const badge = row.querySelector('.status-badge');
         const preElement = row.querySelector('.log-output');
+        const timeline = row.querySelector('.task-timeline');
 
-        // Update the badge
-        badge.className = `status-badge badge ${task.status.toLowerCase()}`;
+        const badgeClass = task.status.split(' ')[0].toLowerCase();
+        badge.className = `status-badge badge ${badgeClass}`;
         badge.textContent = task.status;
 
-        // Update the log output and handle auto-scroll
+        // NEW: Update the timeline (grabs the end_time the moment it finishes)
+        timeline.innerHTML = `
+            <div><strong>S:</strong> ${formatTime(task.start_time)}</div>
+            <div><strong>E:</strong> ${formatTime(task.end_time)}</div>
+        `;
+
         if (preElement.textContent !== task.output) {
             preElement.textContent = task.output || '...';
             if (task.status === 'Running') {
@@ -320,11 +344,9 @@ async function pollSpecificTask(taskId) {
             }
         }
 
-        // If it's still running, check again in 1 second
         if (task.status === 'Running') {
             setTimeout(() => pollSpecificTask(taskId), 1000);
         } else {
-            // Once finished, remove from tracking and do one final global sync
             activePolls.delete(taskId);
             fetchTasks(); 
         }
