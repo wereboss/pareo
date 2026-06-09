@@ -137,3 +137,13 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
 .action-bar select, .action-bar input {
     padding: 8px; border: 1px solid var(--border); border-radius: 4px;
 }
+
+/* Retry Button inside Failed Badges */
+.retry-btn {
+    background: none; border: none; color: #fff;
+    cursor: pointer; margin-left: 8px; font-size: 1.1em;
+    opacity: 0.8; transition: all 0.2s ease; padding: 0 4px;
+}
+.retry-btn:hover {
+    opacity: 1; transform: scale(1.2) rotate(45deg);
+}

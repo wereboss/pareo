@@ -66,6 +66,22 @@ async def run_command(task_id: str, command: str):
         database.append_task_output(task_id, f"\nExecution Error: {str(e)}")
         database.update_task_status(task_id, "Failed (Exception)", end_time)
 
+async def retry_task(task_id: str):
+    """Validates and pushes a failed task back into the worker queue."""
+    task = database.get_task(task_id)
+    if not task:
+        raise ValueError("Task not found.")
+        
+    # Safety check: Prevent re-queuing a task that is already running or completed
+    if 'Failed' not in task['status']:
+        raise ValueError("Only failed or interrupted tasks can be retried.")
+        
+    new_start_time = datetime.now().isoformat()
+    database.reset_task_for_retry(task_id, new_start_time)
+    
+    await task_queue.put((task_id, task['command']))
+    return True
+
 async def worker_loop():
     """Background loop that processes one database task at a time."""
     while True:

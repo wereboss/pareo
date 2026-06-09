@@ -75,3 +75,12 @@ def get_pending_tasks():
     with get_conn() as conn:
         cur = conn.execute("SELECT task_id, command FROM tasks WHERE status = 'Pending' ORDER BY start_time ASC")
         return [{"task_id": row["task_id"], "command": row["command"]} for row in cur.fetchall()]
+    
+def reset_task_for_retry(task_id: str, new_start_time: str):
+    """Scrubs error output and resets a task to Pending."""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE tasks SET status = 'Pending', output = '', start_time = ?, end_time = '' WHERE task_id = ?",
+            (new_start_time, task_id)
+        )
+        conn.commit()    

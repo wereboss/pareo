@@ -121,6 +121,12 @@ def get_fs_config():
     config = command_builder.load_config()
     return config.get("file_operations", {})
 
+@app.get("/api/config/bookmarks")
+def get_bookmarks_config():
+    """Serves the global bookmarks schema for quick-access paths."""
+    config = command_builder.load_config()
+    return config.get("bookmarks", {})
+
 @app.get("/api/fs/list")
 def list_directory(target_path: str = "/"):
     """Returns a JSON array of files and folders for the Explorer Modal."""
@@ -182,6 +188,16 @@ def get_single_task(task_id: str):
     if task:
         return task
     return {"error": "Task not found"}
+
+
+@app.post("/api/tasks/{task_id}/retry")
+async def retry_task_endpoint(task_id: str):
+    """Resets a failed task and pushes it back into the queue."""
+    try:
+        await executor.retry_task(task_id)
+        return {"message": "Task re-queued successfully."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))   
 
 if os.path.exists("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")

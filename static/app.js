@@ -92,10 +92,17 @@ function renderTasks(tasks) {
         const badge = tr.querySelector('.status-badge');
         const preElement = tr.querySelector('.log-output');
 
-        // Update badge dynamically
-        const badgeClass = task.status.split(' ')[0].toLowerCase(); // Handles "Failed (Interrupted)"
+// Update badge dynamically (Handles "Failed (Interrupted)" etc)
+        const badgeClass = task.status.split(' ')[0].toLowerCase(); 
+        
+        let badgeHtml = task.status;
+        // Inject the Retry button strictly for failed tasks
+        if (task.status.includes('Failed')) {
+            badgeHtml += ` <button class="retry-btn" onclick="retryTask('${task.task_id}')" title="Retry Task">↻</button>`;
+        }
+        
         badge.className = `status-badge badge ${badgeClass}`;
-        badge.textContent = task.status;
+        badge.innerHTML = badgeHtml; // Use innerHTML instead of textContent so the button renders
 
         // Update output dynamically
         if (preElement.textContent !== displayData) {
@@ -415,13 +422,48 @@ function updateFfmpegUI() {
     }
 }
 
+// NEW: Trigger the retry API and force a UI refresh
+async function retryTask(taskId) {
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/retry`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json();
+            alert(`Error: ${data.detail}`);
+            return;
+        }
+        fetchTasks(); // Instantly refresh the UI to show it as Pending
+    } catch (error) {
+        console.error("Retry failed:", error);
+    }
+}
+
+// NEW: Fetch and populate the global bookmarks datalist
+async function fetchBookmarks() {
+    try {
+        const response = await fetch('/api/config/bookmarks');
+        const bookmarks = await response.json();
+        
+        const datalist = document.getElementById('bookmarks-list');
+        datalist.innerHTML = ''; 
+        
+        Object.entries(bookmarks).forEach(([name, path]) => {
+            const option = document.createElement('option');
+            option.value = path;
+            // The browser will show the name alongside the path in the dropdown
+            option.textContent = name; 
+            datalist.appendChild(option);
+        });
+    } catch (error) {
+        console.error("Failed to load bookmarks:", error);
+    }
+}
 
 fetchTasks(); // Initial fetch on load
 
 // ADD THIS at the very bottom of app.js (below fetchTasks())
 fetchProfiles();
 fetchFsConfig(); // NEW: Load FS Schema
-
+fetchBookmarks(); // NEW: Load the global path shortcuts
 
 // Start the polling loop (every 2 seconds)
 setInterval(fetchTasks, 150000);

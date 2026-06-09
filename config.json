@@ -1,4 +1,10 @@
 {
+    "bookmarks": {
+        "Ub_Videos": "/home/sayang/Videos/",
+        "Torreents": "/home/sayang/Downloads/Tor/",
+        "Ub_Conversion": "/home/sayang/Videos/temp/",
+        "Ub_Downloads": "/home/sayang/Downloads/"
+    },    
     "ffmpeg": {
         "profiles": {
             "To HEVC AAC": {

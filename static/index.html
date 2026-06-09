@@ -23,7 +23,7 @@
                 <h4>File Explorer</h4>
                 <p>Browse and manage files on the host machine.</p>
                 <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
-                    <input type="text" id="fs-explore-path" placeholder="/tmp/" value="/" style="flex-grow: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                    <input type="text" id="fs-explore-path" list="bookmarks-list" placeholder="/tmp/" value="/" style="flex-grow: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                     <button class="btn" onclick="openExplorer()">Browse Directory</button>
                     <span id="fs-notify" style="color: #2ecc71; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
                 </div>
@@ -48,12 +48,12 @@
 
                 <div style="margin-bottom: 10px;">
                     <label id="lbl-ffmpeg-input" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
-                    <input type="text" id="ffmpeg-input" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                    <input type="text" id="ffmpeg-input" list="bookmarks-list" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                 </div>
 
                 <div style="margin-bottom: 15px;">
                     <label id="lbl-ffmpeg-output" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
-                    <input type="text" id="ffmpeg-output" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                    <input type="text" id="ffmpeg-output" list="bookmarks-list" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                 </div>
 
                 <div id="batch-ext-container" style="margin-bottom: 15px; display: none;">
@@ -89,6 +89,7 @@
     </div>
 
     <script src="app.js"></script>
+    <datalist id="bookmarks-list"></datalist>
     <div id="explorer-modal" class="modal-overlay" style="display: none;">
         <div class="modal-card">
             <div class="modal-header">
@@ -105,7 +106,7 @@
                         <option value="">Select Action...</option>
                         </select>
                     
-                    <input type="text" id="fs-dest-path" placeholder="Destination Path (e.g. /dest/)" style="display: none; flex-grow: 1;">
+                    <input type="text" id="fs-dest-path" list="bookmarks-list" placeholder="Destination Path (e.g. /dest/)" style="display: none; flex-grow: 1;">
                     
                     <button class="btn" onclick="executeFsBatch()" style="white-space: nowrap;">Execute Batch</button>
                 </div>
