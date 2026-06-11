@@ -5,87 +5,95 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pareo | Command Engine</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:,">    
 </head>
 <body>
-    <div class="sidebar">
-        <h2>Pareo</h2>
-        <ul class="nav">
-            <li class="nav-item active" onclick="switchTab(event, 'utilities')">Utilities</li>
-            <li class="nav-item" onclick="switchTab(event, 'tasks')">Ongoing Tasks</li>
-        </ul>
-    </div>
+    <nav class="top-nav">
+        <h3 style="margin: 0; color: #333;">Pareo</h3>
+        <div class="nav-links">
+            <button id="btn-tasks" class="nav-btn active" onclick="switchTab('tasks')">Tasks Queue</button>
+            <button id="btn-utilities" class="nav-btn" onclick="switchTab('utilities')">Utilities</button>
+        </div>
+    </nav>
     
     <div class="main-content">
-        <div id="utilities" class="tab-content active">
-            <h3>Utilities</h3>
-            
+
+        <div id="tab-tasks" style="display: block;">
             <div class="card">
-                <h4>File Explorer</h4>
-                <p>Browse and manage files on the host machine.</p>
-                <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
-                    <input type="text" id="fs-explore-path" list="bookmarks-list" placeholder="/tmp/" value="/" style="flex-grow: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                    <button class="btn" onclick="openExplorer()">Browse Directory</button>
-                    <span id="fs-notify" style="color: #2ecc71; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                <h4>Active Tasks</h4>
+                
+                <div class="table-responsive">
+                    <table id="tasks-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Timeline</th>
+                                <th>Command</th>
+                                <th>Status</th>
+                                <th>Output / Error</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            </tbody>
+                    </table>
                 </div>
+                
             </div>
-
-            <div class="card" style="margin-top: 20px;">
-                <h4>Media Processing (FFMPEG)</h4>
-                <p>Convert video or audio files on the host machine.</p>
-
-                <div style="margin-bottom: 10px;">
-                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Conversion Profile</label>
-                    <select id="ffmpeg-profile" onchange="onProfileChange()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                        <option value="Default">Loading profiles...</option>
-                    </select>
+        </div>       
+        <div id="tab-utilities" style="display: none;">
+            <h3>Utilities</h3>
+            <div class="utilities-grid">            
+                <div class="card">
+                    <h4>File Explorer</h4>
+                    <p>Browse and manage files on the host machine.</p>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                        <input type="text" id="fs-explore-path" list="bookmarks-list" placeholder="/tmp/" value="/" style="flex-grow: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                        <button class="btn" onclick="openExplorer()">Browse Directory</button>
+                        <span id="fs-notify" style="color: #2ecc71; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                    </div>
                 </div>
 
-                <div style="margin-bottom: 15px;">
-                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Execution Mode</label>
-                    <select id="ffmpeg-mode" onchange="updateFfmpegUI()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background-color: #f8f9fa;">
+                <div class="card" style="margin-top: 20px;">
+                    <h4>Media Processing (FFMPEG)</h4>
+                    <p>Convert video or audio files on the host machine.</p>
+
+                    <div style="margin-bottom: 10px;">
+                        <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Conversion Profile</label>
+                        <select id="ffmpeg-profile" onchange="onProfileChange()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                            <option value="Default">Loading profiles...</option>
                         </select>
-                </div>
+                    </div>
 
-                <div style="margin-bottom: 10px;">
-                    <label id="lbl-ffmpeg-input" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
-                    <input type="text" id="ffmpeg-input" list="bookmarks-list" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Execution Mode</label>
+                        <select id="ffmpeg-mode" onchange="updateFfmpegUI()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background-color: #f8f9fa;">
+                            </select>
+                    </div>
 
-                <div style="margin-bottom: 15px;">
-                    <label id="lbl-ffmpeg-output" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
-                    <input type="text" id="ffmpeg-output" list="bookmarks-list" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                </div>
+                    <div style="margin-bottom: 10px;">
+                        <label id="lbl-ffmpeg-input" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
+                        <input type="text" id="ffmpeg-input" list="bookmarks-list" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                    </div>
 
-                <div id="batch-ext-container" style="margin-bottom: 15px; display: none;">
-                    <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Extension</label>
-                    <select id="ffmpeg-ext" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                        </select>
-                </div>
+                    <div style="margin-bottom: 15px;">
+                        <label id="lbl-ffmpeg-output" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
+                        <input type="text" id="ffmpeg-output" list="bookmarks-list" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                    </div>
 
-                <div>
-                    <button class="btn" onclick="executeFfmpeg()">Queue FFMPEG</button>
-                    <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                    <div id="batch-ext-container" style="margin-bottom: 15px; display: none;">
+                        <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Extension</label>
+                        <select id="ffmpeg-ext" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                            </select>
+                    </div>
+
+                    <div>
+                        <button class="btn" onclick="executeFfmpeg()">Queue FFMPEG</button>
+                        <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div id="tasks" class="tab-content">
-            <h3>Ongoing Tasks</h3>
-            <div class="table-container">
-            <table id="tasks-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Timeline</th> <th>Command</th>
-                            <th>Status</th>
-                            <th>Output / Error</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        </tbody>
-                </table>
-            </div>
-        </div>
     </div>
 
     <script src="app.js"></script>
@@ -101,13 +109,18 @@
                 </div>
             
             <div class="modal-footer">
-                <div class="action-bar">
+                <div class="action-bar" style="flex-wrap: wrap;">
                     <select id="fs-action-select" onchange="onFsActionChange()" style="width: 200px;">
                         <option value="">Select Action...</option>
                         </select>
+
+                    <select id="fs-remote-server" onchange="onRemoteServerChange()" style="display: none; width: 200px;">
+                        <option value="">Select Target Server...</option>
+                        </select>
                     
-                    <input type="text" id="fs-dest-path" list="bookmarks-list" placeholder="Destination Path (e.g. /dest/)" style="display: none; flex-grow: 1;">
-                    
+                    <input type="text" id="fs-dest-path" list="bookmarks-list" placeholder="Destination Path (e.g. /dest/)" style="display: none; flex-grow: 1; min-width: 200px;">
+                    <datalist id="bookmarks-list"></datalist>
+                    <datalist id="remote-bookmarks-list"></datalist>
                     <button class="btn" onclick="executeFsBatch()" style="white-space: nowrap;">Execute Batch</button>
                 </div>
             </div>

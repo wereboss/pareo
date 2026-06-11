@@ -40,6 +40,7 @@ class FsRequest(BaseModel):
     action: str
     source_paths: List[str]
     destination_path: Optional[str] = ""
+    remote_server: Optional[str] = ""  # NEW: Tracks the target server
 
 @app.post("/api/execute/ls")
 async def execute_ls():
@@ -127,6 +128,12 @@ def get_bookmarks_config():
     config = command_builder.load_config()
     return config.get("bookmarks", {})
 
+@app.get("/api/config/remotes")
+def get_remotes_config():
+    """Serves the Remote Servers config schema (including context-aware bookmarks)."""
+    config = command_builder.load_config()
+    return config.get("remote_servers", {})
+
 @app.get("/api/fs/list")
 def list_directory(target_path: str = "/"):
     """Returns a JSON array of files and folders for the Explorer Modal."""
@@ -155,26 +162,40 @@ def list_directory(target_path: str = "/"):
 
 @app.post("/api/execute/fs")
 async def execute_fs_action(request: FsRequest):
-    """Loops through source files and queues the requested operation."""
+    """Executes local or remote file operations."""
     config = command_builder.load_config()
     fs_config = config.get("file_operations", {}).get("actions", {})
+    remotes_config = config.get("remote_servers", {})
     
     if request.action not in fs_config:
         raise HTTPException(status_code=400, detail="Invalid action selected.")
         
     action_data = fs_config[request.action]
+    remote_creds = None
     
-    # Validation: Ensure user provided a destination if the config demands one
+    # Validation 1: Require Destination
     if action_data.get("requires_destination") and not request.destination_path:
         raise HTTPException(status_code=400, detail=f"Action '{request.action}' requires a destination path.")
         
+    # Validation 2: Require Remote Server
+    if action_data.get("requires_remote"):
+        if not request.remote_server or request.remote_server not in remotes_config:
+            raise HTTPException(status_code=400, detail="A valid Remote Server must be selected for this action.")
+        remote_creds = remotes_config[request.remote_server]
+        
     queued_count = 0
     for src in request.source_paths:
-        cmd = command_builder.build_fs_command(request.action, src, request.destination_path)
+        cmd = command_builder.build_fs_command(
+            request.action, 
+            src, 
+            request.destination_path, 
+            remote_creds
+        )
         await executor.start_task(cmd)
         queued_count += 1
         
     return {"message": f"Successfully queued {queued_count} file operations.", "queued_count": queued_count}
+
 
 @app.get("/api/tasks")
 def get_tasks():

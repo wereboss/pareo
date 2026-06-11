@@ -4,6 +4,19 @@
         "Torreents": "/home/sayang/Downloads/Tor/",
         "Ub_Conversion": "/home/sayang/Videos/temp/",
         "Ub_Downloads": "/home/sayang/Downloads/"
+    },
+    "remote_servers": {
+        "Macmini": {
+            "user": "sayang",
+            "host": "192.168.0.112",
+            "key_path": "/home/sayang/.ssh/macmini",
+            "bookmarks": {
+                "MM_Downloads": "/Users/sri/Downloads/",
+                "MM_Eng)Movies": "/Volumes/Server HDD2/VidsMini/Movies/English/",
+                "MM_Series": "/Volumes/Server HDD2/VidsMini/Series/",
+                "MM_Documentaries": "/Volumes/Server HDD2/VidsMini/Docus/"
+            }
+        }
     },    
     "ffmpeg": {
         "profiles": {
@@ -48,19 +61,33 @@
         "actions": {
             "Copy": {
                 "command_template": "cp -r \"{source}\" \"{dest}\"",
-                "requires_destination": true
+                "requires_destination": true,
+                "requires_remote": false
             },
             "Move": {
                 "command_template": "mv \"{source}\" \"{dest}\"",
-                "requires_destination": true
+                "requires_destination": true,
+                "requires_remote": false
             },
             "Delete": {
                 "command_template": "rm -rf \"{source}\"",
-                "requires_destination": false
+                "requires_destination": false,
+                "requires_remote": false
             },
             "Compress (Tar.gz)": {
                 "command_template": "tar -czvf \"{source}.tar.gz\" \"{source}\"",
-                "requires_destination": false
+                "requires_destination": false,
+                "requires_remote": false
+            },
+            "Remote Copy (SCP)": {
+                "command_template": "scp -i \"{key_path}\" -r \"{source}\" {user}@{host}:\"{dest}\"",
+                "requires_destination": true,
+                "requires_remote": true
+            },
+            "Remote Move (SCP)": {
+                "command_template": "scp -i \"{key_path}\" -r \"{source}\" {user}@{host}:\"{dest}\" && rm -rf \"{source}\"",
+                "requires_destination": true,
+                "requires_remote": true
             }
         }
     }    

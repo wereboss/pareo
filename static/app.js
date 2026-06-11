@@ -15,12 +15,26 @@ function formatTime(isoString) {
 }
 
 // Handle Navigation Toggling
-function switchTab(event, tabId) {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    
-    document.getElementById(tabId).classList.add('active');
-    event.currentTarget.classList.add('active');
+// UPDATED: Bulletproof Tab Switcher
+function switchTab(tabId) {
+    // 1. Remove 'active' class from ALL navigation buttons
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // 2. Hide ALL content wrappers
+    const tabTasks = document.getElementById('tab-tasks');
+    const tabUtils = document.getElementById('tab-utilities');
+    if (tabTasks) tabTasks.style.display = 'none';
+    if (tabUtils) tabUtils.style.display = 'none';
+
+    // 3. Highlight the clicked button
+    const activeBtn = document.getElementById(`btn-${tabId}`);
+    if (activeBtn) activeBtn.classList.add('active');
+
+    // 4. Show the targeted content wrapper
+    const activeContent = document.getElementById(`tab-${tabId}`);
+    if (activeContent) activeContent.style.display = 'block';
 }
 
 // Shows a temporary success message next to the button
@@ -53,13 +67,45 @@ async function fetchTasks() {
     }
 }
 
+// NEW: Helper function to safely update the badge DOM only when needed
+function updateTaskBadge(badgeElement, task) {
+    // Only update the DOM if the status has actually changed
+    if (badgeElement.dataset.status !== task.status) {
+        let badgeContent = `<span title="${task.status}" style="cursor: help;">${getStatusIcon(task.status)}</span>`;
+        
+        // Inject the retry button if it failed
+        if (task.status.includes('Failed')) {
+            badgeContent += `<button class="retry-btn" onclick="retryTask('${task.task_id}')" title="Retry Task">↻</button>`;
+        }
+        
+        // Use Flexbox to force them to sit perfectly side-by-side
+        badgeElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; gap: 8px;">${badgeContent}</div>`;
+        badgeElement.dataset.status = task.status; // Save the state
+    }
+}
 
+// UPDATED: Map text status to static icons or the CSS spinner
+function getStatusIcon(status) {
+    if (status.includes('Pending')) return '⏳';
+    if (status.includes('Running')) return '<div class="css-spinner"></div>';
+    if (status.includes('Completed')) return '✅';
+    if (status.includes('Failed')) return '❌';
+    return '⏺';
+}
+
+// UPDATED: Enforce strict DOM order and render icons
 function renderTasks(tasks) {
     const tbody = document.querySelector('#tasks-table tbody');
-    // Ensure chronological sorting by start_time (newest first)
+    
+    // Sort chronologically (newest first)
     const taskList = Object.values(tasks).sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
-    taskList.forEach(task => {
+    // Clear "No tasks found" placeholder if it exists
+    if (tbody.firstElementChild && !tbody.firstElementChild.id) {
+        tbody.firstElementChild.remove();
+    }
+
+    taskList.forEach((task, index) => {
         let tr = document.getElementById(`row-${task.task_id}`);
         
         let displayData = '';
@@ -79,44 +125,59 @@ function renderTasks(tasks) {
                 <td><small>${task.task_id.split('-')[0]}</small></td>
                 <td class="task-timeline">${timeHtml}</td>
                 <td><code>${task.command}</code></td>
-                <td><span class="status-badge badge"></span></td>
+                <td><div class="status-badge"></div></td>
                 <td><pre class="log-output"></pre></td>
             `;
-            // Add new rows to the top of the table
-            if (tbody.firstElementChild && !tbody.firstElementChild.id) {
-                tbody.firstElementChild.remove();
-            }
-            tbody.appendChild(tr);
+        }
+
+        // CRITICAL: Enforce exact DOM order without removing/re-adding nodes 
+        // (This prevents the scrollbar inside <pre> from jumping)
+        if (tbody.children[index] !== tr) {
+            tbody.insertBefore(tr, tbody.children[index]);
         }
 
         const badge = tr.querySelector('.status-badge');
         const preElement = tr.querySelector('.log-output');
 
-// Update badge dynamically (Handles "Failed (Interrupted)" etc)
-        const badgeClass = task.status.split(' ')[0].toLowerCase(); 
-        
-        let badgeHtml = task.status;
-        // Inject the Retry button strictly for failed tasks
-        if (task.status.includes('Failed')) {
-            badgeHtml += ` <button class="retry-btn" onclick="retryTask('${task.task_id}')" title="Retry Task">↻</button>`;
-        }
-        
-        badge.className = `status-badge badge ${badgeClass}`;
-        badge.innerHTML = badgeHtml; // Use innerHTML instead of textContent so the button renders
+        // NEW: Call the helper function
+        updateTaskBadge(badge, task);
 
         // Update output dynamically
         if (preElement.textContent !== displayData) {
             preElement.textContent = displayData;
             if (task.status === 'Running') {
+                // Keep scroll anchored to bottom
                 setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
             }
         }
 
+        // Trigger high-speed poller if running
         if (task.status === 'Running' && !activePolls.has(task.task_id)) {
             activePolls.add(task.task_id);
             pollSpecificTask(task.task_id);
         }
     });
+}
+
+// NEW: Global state for Remote Servers
+let remotesConfig = {};
+
+async function fetchRemotesConfig() {
+    try {
+        const response = await fetch('/api/config/remotes');
+        remotesConfig = await response.json();
+        
+        const serverSelect = document.getElementById('fs-remote-server');
+        
+        Object.keys(remotesConfig).forEach(serverName => {
+            const opt = document.createElement('option');
+            opt.value = serverName;
+            opt.textContent = serverName;
+            serverSelect.appendChild(opt);
+        });
+    } catch (error) {
+        console.error("Failed to load remote servers config:", error);
+    }
 }
 
 // NEW: Global state for File Operations Config
@@ -202,24 +263,62 @@ function renderExplorerList(items) {
     });
 }
 
-// Dynamically show/hide destination input based on Config
+// UPDATED: Dynamically shape-shift the UI and swap datalists
 function onFsActionChange() {
     const action = document.getElementById('fs-action-select').value;
     const destInput = document.getElementById('fs-dest-path');
+    const remoteSelect = document.getElementById('fs-remote-server');
     
-    if (action && fsConfig[action] && fsConfig[action].requires_destination) {
-        destInput.style.display = 'block';
-    } else {
+    if (!action || !fsConfig[action]) {
         destInput.style.display = 'none';
-        destInput.value = ''; // clear it so it doesn't accidentally send
+        remoteSelect.style.display = 'none';
+        return;
+    }
+
+    const isRemote = fsConfig[action].requires_remote;
+    const requiresDest = fsConfig[action].requires_destination;
+
+    if (isRemote) {
+        remoteSelect.style.display = 'block';
+        destInput.style.display = 'block';
+        destInput.setAttribute('list', 'remote-bookmarks-list'); // Swap to remote bookmarks
+        destInput.placeholder = "Remote Target Path...";
+        onRemoteServerChange(); // Trigger populate for the first item
+    } else if (requiresDest) {
+        remoteSelect.style.display = 'none';
+        remoteSelect.value = ''; 
+        destInput.style.display = 'block';
+        destInput.setAttribute('list', 'bookmarks-list'); // Swap back to local bookmarks
+        destInput.placeholder = "Destination Path (e.g. /dest/)";
+    } else {
+        remoteSelect.style.display = 'none';
+        destInput.style.display = 'none';
+        destInput.value = '';
+    }
+}
+
+// NEW: Context-aware datalist population
+function onRemoteServerChange() {
+    const serverName = document.getElementById('fs-remote-server').value;
+    const datalist = document.getElementById('remote-bookmarks-list');
+    datalist.innerHTML = ''; // Clear previous bookmarks
+
+    if (serverName && remotesConfig[serverName] && remotesConfig[serverName].bookmarks) {
+        const bookmarks = remotesConfig[serverName].bookmarks;
+        Object.entries(bookmarks).forEach(([name, path]) => {
+            const option = document.createElement('option');
+            option.value = path;
+            option.textContent = name;
+            datalist.appendChild(option);
+        });
     }
 }
 
 async function executeFsBatch() {
     const action = document.getElementById('fs-action-select').value;
     const destInput = document.getElementById('fs-dest-path').value.trim();
+    const remoteServer = document.getElementById('fs-remote-server').value; // NEW
     
-    // Get all checked boxes
     const checkboxes = document.querySelectorAll('.fs-checkbox:checked');
     const sourcePaths = Array.from(checkboxes).map(cb => cb.value);
 
@@ -235,6 +334,11 @@ async function executeFsBatch() {
         alert(`The action '${action}' requires a destination path.`);
         return;
     }
+    // NEW: Validation
+    if (fsConfig[action].requires_remote && !remoteServer) {
+        alert(`The action '${action}' requires a target Remote Server.`);
+        return;
+    }
 
     try {
         await fetch('/api/execute/fs', {
@@ -243,13 +347,14 @@ async function executeFsBatch() {
             body: JSON.stringify({
                 action: action,
                 source_paths: sourcePaths,
-                destination_path: destInput
+                destination_path: destInput,
+                remote_server: remoteServer // NEW
             })
         });
 
         closeExplorer();
         showNotification('fs-notify');
-        fetchTasks(); // Immediately update the UI queue
+        fetchTasks(); 
 
     } catch (error) {
         console.error("Execution failed:", error);
@@ -334,9 +439,8 @@ async function pollSpecificTask(taskId) {
         const preElement = row.querySelector('.log-output');
         const timeline = row.querySelector('.task-timeline');
 
-        const badgeClass = task.status.split(' ')[0].toLowerCase();
-        badge.className = `status-badge badge ${badgeClass}`;
-        badge.textContent = task.status;
+        // NEW: Call the helper function
+        updateTaskBadge(badge, task);
 
         // NEW: Update the timeline (grabs the end_time the moment it finishes)
         timeline.innerHTML = `
@@ -464,6 +568,7 @@ fetchTasks(); // Initial fetch on load
 fetchProfiles();
 fetchFsConfig(); // NEW: Load FS Schema
 fetchBookmarks(); // NEW: Load the global path shortcuts
-
+fetchRemotesConfig(); // NEW: Load remote servers
+switchTab('tasks'); // NEW: Force the UI to sync and show tasks on load
 // Start the polling loop (every 2 seconds)
 setInterval(fetchTasks, 150000);
