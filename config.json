@@ -17,6 +17,19 @@
                 "MM_Documentaries": "/Volumes/Server HDD2/VidsMini/Docus/"
             }
         }
+    },
+    "switchboard": {
+        "Diagnostics": {
+            "Check Uptime": "uptime -p",
+            "Disk Space": "df -h / | tail -1 | awk '{print $5}'",
+            "Ping Router": "ping -c 3 192.168.1.1"
+        },
+        "Network": {
+            "VPN Status": "expressvpn status",
+            "VPN ON": "expressvpn connect 'United Kingdom'",
+            "VPN OFF": "expressvpn disconnect",
+            "VPN KILL": "expressvpn disconnect; pkill -f mount_qbitt; echo \"Killed QBittorren\""
+        }
     },    
     "ffmpeg": {
         "profiles": {

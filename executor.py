@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from datetime import datetime
 import database
+import subprocess
 
 # The queue now holds a tuple: (task_id, command)
 task_queue = asyncio.Queue()
@@ -37,6 +38,54 @@ async def _read_stream(stream, task_id):
         decoded_chunk = chunk.decode('utf-8', errors='replace').replace('\r', '\n')
         if decoded_chunk:
             database.append_task_output(task_id, decoded_chunk)
+
+async def fire_immediate_command(command: str, detached: bool = False) -> dict:
+    """Executes a command immediately. If detached, spawns an independent OS process."""
+    if detached:
+        try:
+            # start_new_session=True completely separates the child process from Pareo
+            process = subprocess.Popen(
+                command,
+                shell=True,
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            # Return the exact Process ID (PID) to the frontend
+            output_msg = (
+                f"Detached process successfully spawned.\n"
+                f"PID: {process.pid}\n"
+                f"Command: {command}"
+            )
+            return {"success": True, "output": output_msg}
+        except Exception as e:
+            return {"success": False, "output": f"Failed to spawn detached process: {str(e)}"}
+
+    # Standard execution (wait for result)
+    try:
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+        except asyncio.TimeoutError:
+            process.kill()
+            return {"success": False, "output": "Execution timed out after 30 seconds."}
+
+        return_code = process.returncode
+        output = stdout.decode('utf-8').strip()
+        error = stderr.decode('utf-8').strip()
+        
+        if return_code == 0:
+            return {"success": True, "output": output if output else "Executed successfully."}
+        else:
+            return {"success": False, "output": error if error else f"Failed with code {return_code}."}
+            
+    except Exception as e:
+        return {"success": False, "output": str(e)}
 
 async def run_command(task_id: str, command: str):
     database.update_task_status(task_id, "Running")

@@ -425,6 +425,41 @@ async function fetchProfiles() {
     }
 }
 
+// NEW: Switchboard Generation
+async function fetchSwitchboardConfig() {
+    try {
+        const response = await fetch('/api/config/switchboard');
+        const config = await response.json();
+        const container = document.getElementById('switchboard-container');
+        container.innerHTML = '';
+
+        Object.entries(config).forEach(([categoryName, buttons]) => {
+            // Create Category Wrapper
+            const catDiv = document.createElement('div');
+            catDiv.className = 'switchboard-category';
+            catDiv.innerHTML = `<h5>${categoryName}</h5>`;
+            
+            // Create Grid for Buttons
+            const gridDiv = document.createElement('div');
+            gridDiv.className = 'switchboard-grid';
+
+            Object.keys(buttons).forEach(btnName => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-switch';
+                btn.textContent = btnName;
+                // Pass 'this' so the function knows exactly which button to animate
+                btn.onclick = function() { fireSwitchboard(categoryName, btnName, this); };
+                gridDiv.appendChild(btn);
+            });
+
+            catDiv.appendChild(gridDiv);
+            container.appendChild(catDiv);
+        });
+    } catch (error) {
+        console.error("Failed to load Switchboard config:", error);
+    }
+}
+
 async function pollSpecificTask(taskId) {
     const row = document.getElementById(`row-${taskId}`);
     if (!row) return;
@@ -562,6 +597,57 @@ async function fetchBookmarks() {
     }
 }
 
+// NEW: Switchboard Execution
+async function fireSwitchboard(category, btnName, btnElement) {
+    // 1. Lock the button and show spinner
+    const originalText = btnElement.textContent;
+    btnElement.disabled = true;
+    btnElement.innerHTML = `<div class="css-spinner"></div>`;
+
+    try {
+        const response = await fetch('/api/execute/switchboard', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: category, button_name: btnName })
+        });
+
+        const data = await response.json();
+
+        // 2. Handle Success or Failure UI
+        if (response.ok) {
+            btnElement.classList.add('success');
+            btnElement.innerHTML = `✅`;
+            
+            // NEW: Populate and open the Result Modal
+            document.getElementById('sb-modal-title').textContent = `${btnName} Result`;
+            document.getElementById('sb-modal-output').textContent = data.message;
+            document.getElementById('switchboard-modal').style.display = 'flex';
+            
+        } else {
+            btnElement.classList.add('error');
+            btnElement.innerHTML = `❌`;
+            console.error(`[Switchboard Error]: ${data.detail}`);
+            alert(`Error: ${data.detail}`);
+        }
+    } catch (error) {
+        btnElement.classList.add('error');
+        btnElement.innerHTML = `❌`;
+        console.error("Switchboard execution failed:", error);
+    } finally {
+        // 3. Revert back to normal state after 2 seconds
+        setTimeout(() => {
+            btnElement.classList.remove('success', 'error');
+            btnElement.innerHTML = originalText;
+            btnElement.disabled = false;
+        }, 2000);
+    }
+}
+
+// NEW: Close the Switchboard Result Modal
+function closeSwitchboardModal() {
+    document.getElementById('switchboard-modal').style.display = 'none';
+}
+
 fetchTasks(); // Initial fetch on load
 
 // ADD THIS at the very bottom of app.js (below fetchTasks())
@@ -569,6 +655,8 @@ fetchProfiles();
 fetchFsConfig(); // NEW: Load FS Schema
 fetchBookmarks(); // NEW: Load the global path shortcuts
 fetchRemotesConfig(); // NEW: Load remote servers
+fetchSwitchboardConfig();
+
 switchTab('tasks'); // NEW: Force the UI to sync and show tasks on load
 // Start the polling loop (every 2 seconds)
 setInterval(fetchTasks, 150000);

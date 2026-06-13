@@ -22,6 +22,14 @@ async def lifespan(app: FastAPI):
     
     # 3. Boot up the background queue worker
     worker_task = asyncio.create_task(executor.worker_loop())
+
+    print("--- TRUE ROUTING ORDER ---")
+    for idx, route in enumerate(app.routes):
+        route_type = "API Endpoint" if hasattr(route, "methods") else "CATCH-ALL MOUNT"
+        path = getattr(route, "path", getattr(route, "name", "Unknown"))
+        print(f"{idx} | {route_type} | {path}")
+    print("--------------------------")
+
     yield
     # Cancel the worker when the server stops
     worker_task.cancel()
@@ -41,6 +49,10 @@ class FsRequest(BaseModel):
     source_paths: List[str]
     destination_path: Optional[str] = ""
     remote_server: Optional[str] = ""  # NEW: Tracks the target server
+
+class SwitchboardRequest(BaseModel):
+    category: str
+    button_name: str
 
 @app.post("/api/execute/ls")
 async def execute_ls():
@@ -220,5 +232,40 @@ async def retry_task_endpoint(task_id: str):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))   
 
-if os.path.exists("static"):
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+@app.get("/api/config/switchboard")
+def get_switchboard_config():
+    """Serves the Switchboard layout structure."""
+    config = command_builder.load_config()
+    return config.get("switchboard", {})
+
+@app.post("/api/execute/switchboard")
+async def execute_switchboard(request: SwitchboardRequest):
+    """Fires a fire-and-forget switchboard command (Standard or Detached)."""
+    config = command_builder.load_config()
+    switchboard = config.get("switchboard", {})
+    
+    if request.category not in switchboard or request.button_name not in switchboard[request.category]:
+        raise HTTPException(status_code=400, detail="Switchboard button not found in configuration.")
+        
+    cmd_data = switchboard[request.category][request.button_name]
+    
+    # Check if the config is a dict (new detached schema) or string (legacy)
+    if isinstance(cmd_data, dict):
+        command = cmd_data.get("command", "")
+        detached = cmd_data.get("detached", False)
+    else:
+        command = cmd_data
+        detached = False
+    
+    # Execute
+    result = await executor.fire_immediate_command(command, detached=detached)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=500, detail=result["output"])
+        
+    return {"message": result["output"]}
+
+
+    # THIS MUST BE THE VERY LAST THING IN THE FILE
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
