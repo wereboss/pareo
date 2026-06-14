@@ -353,3 +353,204 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
     border-width: 2px;
     border-top-color: #fff; 
 }
+
+
+/* =========================================
+   THEME OVERRIDE: SOLARIZED DARK
+   ========================================= */
+:root {
+    /* Core Solarized Palette */
+    --base03: #002b36; /* Dark background */
+    --base02: #073642; /* Card background */
+    --base01: #586e75; /* Borders & Muted text */
+    --base0:  #839496; /* Primary body text */
+    --base1:  #93a1a1; /* Headings */
+    --yellow: #b58900;
+    --orange: #cb4b16;
+    --red:    #dc322f; /* Errors */
+    --blue:   #268bd2;
+    --cyan:   #2aa198; /* Primary Accents */
+    --green:  #859900; /* Success */
+}
+
+/* Global Backgrounds */
+body { background-color: var(--base03) !important; color: var(--base0) !important; }
+
+/* Typography & Headers (Overrides JS/HTML inline styles) */
+h1, h2, h3, h4, h5, h6, label, strong { color: var(--base1) !important; }
+
+/* Top Navigation */
+.top-nav { background: var(--base02) !important; border-bottom: 1px solid var(--base01) !important; }
+.nav-btn { color: var(--base0) !important; }
+.nav-btn:hover, .nav-btn.active { color: var(--cyan) !important; border-bottom: 3px solid var(--cyan) !important; }
+
+/* Cards & Containers */
+.card { background: var(--base02) !important; border: 1px solid var(--base01) !important; box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important; }
+
+/* Tables */
+table th { background: var(--base03) !important; color: var(--cyan) !important; border-bottom: 2px solid var(--base01) !important; }
+table td { border-bottom: 1px solid var(--base03) !important; color: var(--base0) !important; }
+table tr:hover td { background-color: rgba(7, 54, 66, 0.5) !important; }
+
+/* Inputs & Datalists */
+input, select, textarea { background: var(--base03) !important; color: var(--cyan) !important; border: 1px solid var(--base01) !important; }
+input:focus { border-color: var(--cyan) !important; outline: none; box-shadow: 0 0 5px rgba(42, 161, 152, 0.3); }
+
+/* Terminal/Log Output */
+.log-output { background: var(--base03) !important; color: var(--base0) !important; border: 1px solid var(--base01) !important; }
+
+/* Modals (Overriding inline HTML styles) */
+.modal-content { background: var(--base02) !important; border: 1px solid var(--base01) !important; }
+.modal-content h3 { color: var(--base1) !important; }
+.modal-content button { color: var(--base1) !important; }
+
+/* Switchboard Buttons (Overriding JS state colors) */
+.btn-switch { background: var(--base03) !important; color: var(--base1) !important; border: 1px solid var(--base01) !important; }
+.btn-switch:hover:not(:disabled) { background: var(--base01) !important; color: var(--base03) !important; }
+.btn-switch.success { background: var(--green) !important; color: var(--base03) !important; border-color: var(--green) !important; }
+.btn-switch.error { background: var(--red) !important; color: var(--base1) !important; border-color: var(--red) !important; }
+
+/* Generic Card Submit Button */
+button[type="submit"] { background: var(--base03) !important; color: var(--cyan) !important; border: 1px solid var(--cyan) !important; transition: all 0.2s; }
+button[type="submit"]:hover:not(:disabled) { background: var(--cyan) !important; color: var(--base03) !important; }
+
+/* Spinner Colors */
+.css-spinner { border-color: var(--base01) !important; border-top-color: var(--cyan) !important; }
+.btn-switch .css-spinner { border-color: var(--base01) !important; border-top-color: var(--base1) !important; }
+
+/* =========================================
+   SOLARIZED THEME FIXES (BUTTONS & CODE)
+   ========================================= */
+
+/* 1. Catch the FFMPEG, FS, and any other primary/secondary buttons */
+.btn-primary, .btn-secondary {
+    background: var(--base03) !important;
+    color: var(--cyan) !important;
+    border: 1px solid var(--cyan) !important;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover:not(:disabled), .btn-secondary:hover:not(:disabled) {
+    background: var(--cyan) !important;
+    color: var(--base03) !important;
+}
+
+/* 2. Fix the Task List "Command" column (Code / Pre tags) */
+code, pre {
+    background-color: var(--base02) !important;
+    color: var(--green) !important; /* Solarized green pops beautifully for terminal commands */
+    border: 1px solid var(--base01) !important;
+}
+
+/* Strip the border/background if the code tag is sitting directly inside a table cell for a cleaner look */
+table td code {
+    background-color: transparent !important;
+    border: none !important;
+    color: var(--green) !important;
+}
+
+/* =========================================
+   TERMINAL TEXT FIXES
+   ========================================= */
+
+.log-output {
+    text-align: left !important;
+    font-family: 'Consolas', 'Menlo', 'Courier New', monospace !important;
+    font-size: 0.9em !important;
+    line-height: 1.4 !important;
+    padding: 10px !important;
+}
+
+/* =========================================
+   SOLARIZED MODAL & STUBBORN BUTTON FIXES
+   ========================================= */
+
+/* 1. Force ALL standard buttons (except switchboard) to adopt the theme */
+.card button:not(.btn-switch),
+.modal-content button {
+    background: var(--base03) !important;
+    color: var(--cyan) !important;
+    border: 1px solid var(--cyan) !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+}
+
+.card button:not(.btn-switch):hover:not(:disabled),
+.modal-content button:hover:not(:disabled) {
+    background: var(--cyan) !important;
+    color: var(--base03) !important;
+}
+
+/* 2. Overhaul the Modals */
+.modal-content {
+    background: var(--base02) !important;
+    border: 1px solid var(--cyan) !important; /* Cyan border makes the modal pop from the background */
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
+}
+
+.modal-content div[style*="color: #333"], 
+.modal-content div[style*="color: #666"] {
+    color: var(--base0) !important; /* Catch any inline grey text */
+}
+
+/* 3. The File Explorer Internal List */
+#explorer-list {
+    background: var(--base03) !important;
+    border: 1px solid var(--base01) !important;
+    border-radius: 4px !important;
+}
+
+.file-item {
+    border-bottom: 1px solid var(--base02) !important;
+    color: var(--base0) !important;
+}
+
+.file-item:hover {
+    background: rgba(42, 161, 152, 0.1) !important; /* Subtle cyan highlight on hover */
+}
+
+.file-name {
+    color: var(--base1) !important;
+}
+
+.file-size {
+    color: var(--base01) !important;
+}
+
+/* =========================================
+   MODAL HEADER, FOOTER & CLOSE BUTTON FIXES
+   ========================================= */
+
+/* 1. Force the Modal Headers to use the Solarized Headings color */
+.modal-content h3, 
+.modal-content h3[style], 
+#explorer-title, 
+#sb-modal-title {
+    color: var(--base1) !important;
+}
+
+/* 2. Catch stray inline grey styles in footers or loading text */
+.modal-content div[style*="color"], 
+.modal-content span[style*="color"] {
+    color: var(--base0) !important;
+}
+
+/* 3. Isolate the Close (X) Buttons */
+/* This clever selector targets ONLY buttons whose onclick attribute contains the word "close" */
+.modal-content button[onclick*="close"] {
+    background: transparent !important;
+    border: none !important;
+    color: var(--base01) !important;
+    box-shadow: none !important;
+    font-size: 1.5em !important;
+    padding: 0 10px !important;
+    margin: 0 !important;
+}
+
+/* Give the X button a slick Solarized red highlight when hovered */
+.modal-content button[onclick*="close"]:hover {
+    background: transparent !important;
+    color: var(--red) !important; 
+    transform: scale(1.1);
+    transition: all 0.2s ease;
+}

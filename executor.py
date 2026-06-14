@@ -4,27 +4,38 @@ from datetime import datetime
 import database
 import subprocess
 
-# The queue now holds a tuple: (task_id, command)
-task_queue = asyncio.Queue()
+# 1. Add a global list at the top of executor.py to hold references
+active_workers = []
 
-async def start_task(command: str) -> str:
-    """Generates an ID, saves to SQLite, and pushes to the worker queue."""
+# UPDATED: Added a dedicated 'fs' queue
+task_queues = {
+    "media": asyncio.Queue(),
+    "network": asyncio.Queue(),
+    "fs": asyncio.Queue(),       
+    "default": asyncio.Queue()
+}
+
+# 3. Add a print statement to start_task to prove it entered the queue
+async def start_task(command: str, queue_name: str = "default") -> str:
     task_id = str(uuid.uuid4())
     start_time = datetime.now().isoformat()
     
     database.insert_task(task_id, command, "Pending", start_time)
-    await task_queue.put((task_id, command))
+    
+    target_queue = task_queues.get(queue_name, task_queues["default"])
+    await target_queue.put((task_id, command))
+    
+    print(f"[*] Pushed task {task_id[:8]} into queue: {queue_name.upper()}") # NEW
     return task_id
 
 def recover_tasks():
     """Runs on server boot to handle orphaned tasks and requeue pending ones."""
-    # 1. Protect files by marking interrupted 'Running' tasks as Failed
     database.mark_running_as_failed()
     
-    # 2. Push any 'Pending' tasks back into the asyncio queue
     pending = database.get_pending_tasks()
     for pt in pending:
-        task_queue.put_nowait((pt["task_id"], pt["command"]))
+        # Push recovered tasks to the default queue
+        task_queues["default"].put_nowait((pt["task_id"], pt["command"]))
     
     return len(pending)
 
@@ -38,12 +49,14 @@ async def _read_stream(stream, task_id):
         decoded_chunk = chunk.decode('utf-8', errors='replace').replace('\r', '\n')
         if decoded_chunk:
             database.append_task_output(task_id, decoded_chunk)
+            # CRITICAL FIX: Yield control back to the asyncio event loop
+            # This prevents heavy progress-bar spam from blocking other parallel tasks
+            await asyncio.sleep(0.05)
 
 async def fire_immediate_command(command: str, detached: bool = False) -> dict:
     """Executes a command immediately. If detached, spawns an independent OS process."""
     if detached:
         try:
-            # start_new_session=True completely separates the child process from Pareo
             process = subprocess.Popen(
                 command,
                 shell=True,
@@ -51,7 +64,6 @@ async def fire_immediate_command(command: str, detached: bool = False) -> dict:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
-            # Return the exact Process ID (PID) to the frontend
             output_msg = (
                 f"Detached process successfully spawned.\n"
                 f"PID: {process.pid}\n"
@@ -61,7 +73,6 @@ async def fire_immediate_command(command: str, detached: bool = False) -> dict:
         except Exception as e:
             return {"success": False, "output": f"Failed to spawn detached process: {str(e)}"}
 
-    # Standard execution (wait for result)
     try:
         process = await asyncio.create_subprocess_shell(
             command,
@@ -88,6 +99,10 @@ async def fire_immediate_command(command: str, detached: bool = False) -> dict:
         return {"success": False, "output": str(e)}
 
 async def run_command(task_id: str, command: str):
+    # NEW: Capture exact time the worker picked it up
+    actual_start_time = datetime.now().isoformat()
+    database.update_task_start_time(task_id, actual_start_time)
+
     database.update_task_status(task_id, "Running")
     
     try:
@@ -121,19 +136,48 @@ async def retry_task(task_id: str):
     if not task:
         raise ValueError("Task not found.")
         
-    # Safety check: Prevent re-queuing a task that is already running or completed
     if 'Failed' not in task['status']:
         raise ValueError("Only failed or interrupted tasks can be retried.")
         
     new_start_time = datetime.now().isoformat()
     database.reset_task_for_retry(task_id, new_start_time)
     
-    await task_queue.put((task_id, task['command']))
+    # Push retries to the default queue
+    await task_queues["default"].put((task_id, task['command']))
     return True
 
-async def worker_loop():
-    """Background loop that processes one database task at a time."""
+async def worker(queue_name: str, queue: asyncio.Queue):
+    """A dedicated worker listening only to its specific queue."""
+    print(f"[*] Started background worker for queue: {queue_name.upper()}")
     while True:
-        task_id, command = await task_queue.get()
-        await run_command(task_id, command)
-        task_queue.task_done()
+        task_id, command = await queue.get()
+        print(f"[{queue_name.upper()} WORKER] Picked up task {task_id[:8]}")
+        
+        try:
+            # Execute the command
+            await run_command(task_id, command)
+            
+        except Exception as e:
+            # If a database lock or bizarre OS error bypasses run_command's internal safety net,
+            # this catches it so the worker thread does NOT die.
+            print(f"[{queue_name.upper()} WORKER FATAL ERROR] Task {task_id[:8]} caused a thread crash: {str(e)}")
+            
+            # Attempt a last-resort fallback to mark it as failed so it doesn't get stuck Running
+            try:
+                import database
+                from datetime import datetime
+                database.update_task_status(task_id, "Failed (Worker Exception)", datetime.now().isoformat())
+            except Exception:
+                pass 
+                
+        finally:
+            # CRITICAL: Always mark the queue item as done, even if it exploded.
+            # This ensures the queue never jams.
+            queue.task_done()
+
+# 2. Update start_workers to save the references
+def start_workers():
+    """Spawns an independent worker thread for each queue type and keeps them alive."""
+    for q_name, q in task_queues.items():
+        task = asyncio.create_task(worker(q_name, q))
+        active_workers.append(task) # <--- This prevents Python from killing the thread

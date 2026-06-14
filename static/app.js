@@ -113,20 +113,25 @@ function renderTasks(tasks) {
         else if (task.output) displayData = task.output; 
         else displayData = '...';
 
-        const timeHtml = `
-            <div><strong>S:</strong> ${formatTime(task.start_time)}</div>
-            <div><strong>E:</strong> ${formatTime(task.end_time)}</div>
+        // NEW: Build the Combined Meta Column
+        const shortId = task.task_id.split('-')[0];
+        const detailsHtml = `
+            <div style="font-weight: bold; color: var(--cyan); margin-bottom: 8px;">ID: ${shortId}</div>
+            <div class="task-timeline" style="font-size: 0.8em; color: var(--base01); line-height: 1.4;">
+                <div><strong style="color: var(--base0);">Started:</strong><br>${formatTime(task.start_time)}</div>
+                <div style="margin-top: 5px;"><strong style="color: var(--base0);">Ended:</strong><br>${formatTime(task.end_time)}</div>
+            </div>
         `;
 
         if (!tr) {
             tr = document.createElement('tr');
             tr.id = `row-${task.task_id}`;
+            // UPDATED: 4-Column Layout matching index.html, with the output-cell class for the CSS height fix
             tr.innerHTML = `
-                <td><small>${task.task_id.split('-')[0]}</small></td>
-                <td class="task-timeline">${timeHtml}</td>
-                <td><code>${task.command}</code></td>
-                <td><div class="status-badge"></div></td>
-                <td><pre class="log-output"></pre></td>
+                <td style="vertical-align: top;">${detailsHtml}</td>
+                <td style="vertical-align: top;"><pre style="margin:0; white-space: pre-wrap; word-wrap: break-word;"><code>${task.command}</code></pre></td>
+                <td style="vertical-align: top; text-align: center;"><div class="status-badge"></div></td>
+                <td class="output-cell" style="vertical-align: top;"><pre class="log-output"></pre></td>
             `;
         }
 
@@ -477,11 +482,13 @@ async function pollSpecificTask(taskId) {
         // NEW: Call the helper function
         updateTaskBadge(badge, task);
 
-        // NEW: Update the timeline (grabs the end_time the moment it finishes)
-        timeline.innerHTML = `
-            <div><strong>S:</strong> ${formatTime(task.start_time)}</div>
-            <div><strong>E:</strong> ${formatTime(task.end_time)}</div>
-        `;
+        // NEW: Update the timeline with Solarized formatting
+        if (timeline) {
+            timeline.innerHTML = `
+                <div><strong style="color: var(--base0);">Started:</strong><br>${formatTime(task.start_time)}</div>
+                <div style="margin-top: 5px;"><strong style="color: var(--base0);">Ended:</strong><br>${formatTime(task.end_time)}</div>
+            `;
+        }
 
         if (preElement.textContent !== task.output) {
             preElement.textContent = task.output || '...';
@@ -597,6 +604,53 @@ async function fetchBookmarks() {
     }
 }
 
+async function fetchGenericCards() {
+    try {
+        const response = await fetch('/api/config/generic_cards');
+        const cards = await response.json();
+        const container = document.getElementById('generic-cards-container');
+        container.innerHTML = '';
+
+        Object.entries(cards).forEach(([cardName, config]) => {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'card';
+            
+            // Remove spaces for clean HTML IDs
+            const safeName = cardName.replace(/\s+/g, '');
+            let html = `<h4>${cardName}</h4><form id="form-${safeName}">`;
+
+            // Dynamically generate inputs based on schema
+            config.inputs.forEach(input => {
+                html += `<div class="input-group" style="margin-bottom: 10px;">`;
+                html += `<label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.85em;">${input.label}</label>`;
+                
+                // If it is a directory type, reuse our existing fs-bookmarks datalist!
+                if (input.type === 'directory') {
+                    html += `<input type="text" id="${safeName}-${input.id}" name="${input.id}" list="bookmarks-list" autocomplete="off" placeholder="Double-click to view bookmarks..." style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required>`;
+                } else {
+                    html += `<input type="text" id="${safeName}-${input.id}" name="${input.id}" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required>`;
+                }
+                html += `</div>`;
+            });
+
+            html += `<button type="submit" class="btn-primary" style="margin-top: 10px; width: 100%; padding: 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Queue Task</button>`;
+            html += `</form>`;
+            
+            cardDiv.innerHTML = html;
+            container.appendChild(cardDiv);
+
+            // Attach Submission Event Listener
+            const formElement = cardDiv.querySelector('form');
+            formElement.onsubmit = function(e) {
+                e.preventDefault();
+                fireGenericTask(cardName, safeName, formElement, config.inputs);
+            };
+        });
+    } catch (error) {
+        console.error("Failed to load Generic Cards:", error);
+    }
+}
+
 // NEW: Switchboard Execution
 async function fireSwitchboard(category, btnName, btnElement) {
     // 1. Lock the button and show spinner
@@ -643,6 +697,58 @@ async function fireSwitchboard(category, btnName, btnElement) {
     }
 }
 
+// NEW: Execute Generic Task
+async function fireGenericTask(cardName, safeName, formElement, schemaInputs) {
+    const submitBtn = formElement.querySelector('button');
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<div class="css-spinner" style="border-top-color: #fff;"></div>'; 
+
+    // Gather inputs into a dictionary
+    const inputsData = {};
+    schemaInputs.forEach(input => {
+        const field = document.getElementById(`${safeName}-${input.id}`);
+        inputsData[input.id] = field.value;
+    });
+
+    try {
+        const response = await fetch('/api/execute/generic', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                card_name: cardName,
+                inputs: inputsData
+            })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            submitBtn.style.background = '#27ae60';
+            submitBtn.textContent = `Queued (ID: ${data.task_id.split('-')[0]})`;
+            formElement.reset(); 
+            
+            // Force the task list to update immediately and switch tabs
+            fetchTasks();
+            setTimeout(() => switchTab('tasks'), 600); 
+        } else {
+            alert(`Error: ${data.detail}`);
+            submitBtn.style.background = '#e74c3c';
+            submitBtn.textContent = 'Failed';
+        }
+    } catch (error) {
+        console.error("Generic execution failed:", error);
+        submitBtn.style.background = '#e74c3c';
+        submitBtn.textContent = 'Error';
+    } finally {
+        setTimeout(() => {
+            submitBtn.disabled = false;
+            submitBtn.style.background = '#2ecc71';
+            submitBtn.textContent = originalText;
+        }, 3000);
+    }
+}
+
 // NEW: Close the Switchboard Result Modal
 function closeSwitchboardModal() {
     document.getElementById('switchboard-modal').style.display = 'none';
@@ -656,7 +762,7 @@ fetchFsConfig(); // NEW: Load FS Schema
 fetchBookmarks(); // NEW: Load the global path shortcuts
 fetchRemotesConfig(); // NEW: Load remote servers
 fetchSwitchboardConfig();
-
+fetchGenericCards();
 switchTab('tasks'); // NEW: Force the UI to sync and show tasks on load
 // Start the polling loop (every 2 seconds)
 setInterval(fetchTasks, 150000);

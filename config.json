@@ -18,17 +18,27 @@
             }
         }
     },
+    "generic_cards": {
+        "Torrent Downloader": {
+            "task_type": "network",
+            "command_template": "aria2c --seed-time=0 --max-connection-per-server=16 --split=16 --min-split-size=1M --max-concurrent-downloads=5 --enable-peer-exchange=true --follow-torrent=mem --file-allocation=none '{url}' -d '{save_path}'",
+            "inputs": [
+                { "id": "url", "label": "Torrent URL or Magnet Link", "type": "text" },
+                { "id": "save_path", "label": "Save Directory", "type": "directory" }
+            ]
+        }
+    },    
     "switchboard": {
-        "Diagnostics": {
-            "Check Uptime": "uptime -p",
-            "Disk Space": "df -h / | tail -1 | awk '{print $5}'",
-            "Ping Router": "ping -c 3 192.168.1.1"
-        },
         "Network": {
             "VPN Status": "expressvpn status",
             "VPN ON": "expressvpn connect 'United Kingdom'",
             "VPN OFF": "expressvpn disconnect",
             "VPN KILL": "expressvpn disconnect; pkill -f mount_qbitt; echo \"Killed QBittorren\""
+        },        
+        "Diagnostics": {
+            "Check Uptime": "uptime -p",
+            "Disk Space": "df -h / | tail -1 | awk '{print $5}'",
+            "Ping Router": "ping -c 3 192.168.1.1"
         }
     },    
     "ffmpeg": {

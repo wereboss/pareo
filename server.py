@@ -20,8 +20,8 @@ async def lifespan(app: FastAPI):
     recovered_count = executor.recover_tasks()
     print(f"[*] Pareo Engine Boot: Recovered {recovered_count} pending tasks.")
     
-    # 3. Boot up the background queue worker
-    worker_task = asyncio.create_task(executor.worker_loop())
+    # NEW: Start the parallel workers
+    executor.start_workers()
 
     print("--- TRUE ROUTING ORDER ---")
     for idx, route in enumerate(app.routes):
@@ -32,9 +32,13 @@ async def lifespan(app: FastAPI):
 
     yield
     # Cancel the worker when the server stops
-    worker_task.cancel()
+    # worker_task.cancel()
 
 app = FastAPI(title="Pareo API", lifespan=lifespan)
+
+class GenericTaskRequest(BaseModel):
+    card_name: str
+    inputs: dict
 
 # 1. Unified Pydantic Model
 class FfmpegRequest(BaseModel):
@@ -93,7 +97,8 @@ async def execute_ffmpeg(request: FfmpegRequest):
             request.output_target, 
             request.profile
         )
-        await executor.start_task(command)
+        # CRITICAL FIX: Route to 'media' queue
+        await executor.start_task(command, queue_name="media")
         queued_count = 1
         
     elif request.mode == "batch":
@@ -121,7 +126,8 @@ async def execute_ffmpeg(request: FfmpegRequest):
             output_file_path = os.path.join(request.output_target, f"{filename_without_ext}{ext}")
             
             command = command_builder.build_ffmpeg_command(file_path, output_file_path, request.profile)
-            await executor.start_task(command)
+            # CRITICAL FIX: Route to 'media' queue
+            await executor.start_task(command, queue_name="media")
             queued_count += 1
             
     return {"message": f"Successfully queued {queued_count} task(s).", "queued_count": queued_count}
@@ -203,7 +209,8 @@ async def execute_fs_action(request: FsRequest):
             request.destination_path, 
             remote_creds
         )
-        await executor.start_task(cmd)
+        # CRITICAL FIX: Route to 'fs' queue
+        await executor.start_task(cmd, queue_name="fs")
         queued_count += 1
         
     return {"message": f"Successfully queued {queued_count} file operations.", "queued_count": queued_count}
@@ -266,6 +273,40 @@ async def execute_switchboard(request: SwitchboardRequest):
         
     return {"message": result["output"]}
 
+@app.get("/api/config/generic_cards")
+def get_generic_cards():
+    """Serves the generic card layouts to the frontend."""
+    config = command_builder.load_config()
+    return config.get("generic_cards", {})
+
+@app.post("/api/execute/generic")
+async def execute_generic(request: GenericTaskRequest):
+    """Parses dynamic inputs into a template and queues the task."""
+    config = command_builder.load_config()
+    cards = config.get("generic_cards", {})
+    
+    if request.card_name not in cards:
+        raise HTTPException(status_code=404, detail="Generic card configuration not found.")
+        
+    card_config = cards[request.card_name]
+    command = card_config.get("command_template", "")
+    
+    # Inject the user inputs into the {placeholders}
+    for key, value in request.inputs.items():
+        command = command.replace(f"{{{key}}}", str(value))
+        
+    # Identify the target parallel queue
+    queue_name = card_config.get("task_type", "default")
+    
+    # Submit to the parallel engine using the correct function name
+    task_id = await executor.start_task(command, queue_name=queue_name)
+    
+    return {
+        "message": "Task generated and queued.", 
+        "task_id": task_id, 
+        "queue": queue_name,
+        "final_command": command
+    }
 
     # THIS MUST BE THE VERY LAST THING IN THE FILE
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

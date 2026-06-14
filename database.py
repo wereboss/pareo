@@ -84,3 +84,10 @@ def reset_task_for_retry(task_id: str, new_start_time: str):
             (new_start_time, task_id)
         )
         conn.commit()    
+
+
+def update_task_start_time(task_id: str, start_time: str):
+    """Updates the start time when a task officially moves out of the queue."""
+    with get_conn() as conn:
+        conn.execute("UPDATE tasks SET start_time = ? WHERE task_id = ?", (start_time, task_id))
+        conn.commit()
