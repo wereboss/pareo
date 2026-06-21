@@ -205,8 +205,13 @@ async def retry_task(task_id: str):
     new_start_time = datetime.now().isoformat()
     database.reset_task_for_retry(task_id, new_start_time)
     
-    # Push retries to the default queue
-    await task_queues["default"].put((task_id, task['command']))
+    # Push retries to the correct queue
+    q_name = task.get("queue_name")
+    if not q_name:
+        q_name = resolve_queue_from_command(task['command'])
+        
+    target_queue = task_queues.get(q_name, task_queues["default"])
+    await target_queue.put((task_id, task['command']))
     return True
 
 async def worker(queue_name: str, queue: asyncio.Queue):
