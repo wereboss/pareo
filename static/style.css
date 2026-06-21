@@ -233,6 +233,16 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
     opacity: 1; transform: scale(1.2) rotate(45deg);
 }
 
+/* Cancel Button */
+.cancel-btn {
+    background: none; border: none; color: var(--red);
+    cursor: pointer; font-size: 1.1em; font-weight: bold;
+    opacity: 0.8; transition: all 0.2s ease; padding: 0 2px;
+}
+.cancel-btn:hover {
+    opacity: 1; transform: scale(1.2);
+}
+
 /* --- Pure CSS Spinner --- */
 .css-spinner {
     display: inline-block;

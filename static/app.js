@@ -199,8 +199,13 @@ function updateTaskBadge(badgeElement, task) {
     if (badgeElement.dataset.status !== task.status) {
         let badgeContent = `<span title="${task.status}" style="cursor: help;">${getStatusIcon(task.status)}</span>`;
         
-        // Inject the retry button if it failed
-        if (task.status.includes('Failed')) {
+        // Inject the cancel button if pending or running
+        if (task.status === 'Running' || task.status === 'Pending') {
+            badgeContent += `<button class="cancel-btn" onclick="cancelTask('${task.task_id}')" title="Cancel Task">🛑</button>`;
+        }
+        
+        // Inject the retry button if failed, interrupted, or cancelled
+        if (task.status.includes('Failed') || task.status.includes('Interrupted') || task.status === 'Cancelled') {
             badgeContent += `<button class="retry-btn" onclick="retryTask('${task.task_id}')" title="Retry Task">↻</button>`;
         }
         
@@ -216,6 +221,7 @@ function getStatusIcon(status) {
     if (status.includes('Running')) return '<div class="css-spinner"></div>';
     if (status.includes('Completed')) return '✅';
     if (status.includes('Failed')) return '❌';
+    if (status.includes('Cancelled')) return '🚫';
     return '⏺';
 }
 
@@ -734,6 +740,24 @@ async function retryTask(taskId) {
         fetchTasks(); // Instantly refresh the UI to show it as Pending
     } catch (error) {
         console.error("Retry failed:", error);
+    }
+}
+
+// NEW: Trigger the cancel API and force a UI refresh
+async function cancelTask(taskId) {
+    if (!confirm("Are you sure you want to cancel this task?")) {
+        return;
+    }
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json();
+            alert(`Error: ${data.detail}`);
+            return;
+        }
+        fetchTasks(); // Instantly refresh the UI
+    } catch (error) {
+        console.error("Cancel failed:", error);
     }
 }
 

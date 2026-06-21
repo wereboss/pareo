@@ -251,6 +251,16 @@ async def retry_task_endpoint(task_id: str):
         raise HTTPException(status_code=400, detail=str(e))   
 
 
+@app.post("/api/tasks/{task_id}/cancel")
+async def cancel_task_endpoint(task_id: str):
+    """Cancels a running or pending task."""
+    try:
+        await executor.cancel_task(task_id)
+        return {"message": "Task cancelled successfully."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/config/switchboard")
 def get_switchboard_config():
     """Serves the Switchboard layout structure."""
