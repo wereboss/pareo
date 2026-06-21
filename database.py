@@ -85,6 +85,8 @@ def get_tasks_paginated(limit: int = 15, offset: int = 0, queue: str = None, sta
     if status:
         if status.lower() == 'failed':
             conditions.append("status LIKE 'Failed%'")
+        elif status.lower() == 'incomplete':
+            conditions.append("status IN ('Pending', 'Running')")
         else:
             conditions.append("status = ?")
             params.append(status)
