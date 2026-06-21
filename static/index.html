@@ -23,6 +23,36 @@
             <div class="card">
                 <h4>Active Tasks</h4>
                 
+                <div class="filters-bar" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;">
+                    <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 150px; flex-grow: 1;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1);">Queue</label>
+                        <select id="filter-queue" onchange="applyFilters()" style="width: 100%; padding: 8px; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                            <option value="">All Queues</option>
+                            <option value="media">Media</option>
+                            <option value="network">Network</option>
+                            <option value="fs">FS</option>
+                            <option value="default">Default</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 150px; flex-grow: 1;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1);">Status</label>
+                        <select id="filter-status" onchange="applyFilters()" style="width: 100%; padding: 8px; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                            <option value="">All Statuses</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Running">Running</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Failed">Failed</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 250px; flex-grow: 2;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1);">Command Search</label>
+                        <input type="text" id="filter-command" oninput="applyFiltersWithDebounce()" placeholder="Search command..." style="width: 100%; padding: 8px; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                    </div>
+                    <div class="filter-group" style="min-width: 100px;">
+                        <button class="btn" onclick="clearFilters()" style="width: 100%; padding: 8px 15px; height: 37px; font-size: 0.9em; cursor: pointer; border-radius: 4px; font-weight: bold; display: flex; align-items: center; justify-content: center;">Clear Filters</button>
+                    </div>
+                </div>
+                
                 <div class="table-responsive">
                     <table id="tasks-table">
                     <thead>

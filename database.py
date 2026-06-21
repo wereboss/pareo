@@ -20,16 +20,24 @@ def init_db():
                 status TEXT,
                 output TEXT,
                 start_time TEXT,
-                end_time TEXT
+                end_time TEXT,
+                queue_name TEXT
             )
         """)
         conn.commit()
+        
+        # Ensure queue_name column exists for older databases (migration fallback)
+        try:
+            conn.execute("ALTER TABLE tasks ADD COLUMN queue_name TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
 
-def insert_task(task_id: str, command: str, status: str, start_time: str):
+def insert_task(task_id: str, command: str, status: str, start_time: str, queue_name: str = "default"):
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO tasks (task_id, command, status, output, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?)",
-            (task_id, command, status, "", start_time, "")
+            "INSERT INTO tasks (task_id, command, status, output, start_time, end_time, queue_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (task_id, command, status, "", start_time, "", queue_name)
         )
         conn.commit()
 
@@ -52,13 +60,33 @@ def get_all_tasks():
         cur = conn.execute("SELECT * FROM tasks ORDER BY start_time DESC")
         return {row["task_id"]: dict(row) for row in cur.fetchall()}
 
-def get_tasks_paginated(limit: int = 15, offset: int = 0):
-    """Retrieves metadata of historical tasks excluding logs with pagination."""
+def get_tasks_paginated(limit: int = 15, offset: int = 0, queue: str = None, status: str = None, command: str = None):
+    """Retrieves metadata of historical tasks excluding logs with pagination and optional filtering."""
+    query = "SELECT task_id, command, status, start_time, end_time, queue_name FROM tasks"
+    conditions = []
+    params = []
+    
+    if queue:
+        conditions.append("queue_name = ?")
+        params.append(queue)
+    if status:
+        if status.lower() == 'failed':
+            conditions.append("status LIKE 'Failed%'")
+        else:
+            conditions.append("status = ?")
+            params.append(status)
+    if command:
+        conditions.append("command LIKE ?")
+        params.append(f"%{command}%")
+        
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+        
+    query += " ORDER BY start_time DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+    
     with get_conn() as conn:
-        cur = conn.execute(
-            "SELECT task_id, command, status, start_time, end_time FROM tasks ORDER BY start_time DESC LIMIT ? OFFSET ?",
-            (limit, offset)
-        )
+        cur = conn.execute(query, params)
         return {row["task_id"]: dict(row) for row in cur.fetchall()}
 
 def get_task(task_id: str):
@@ -82,8 +110,14 @@ def mark_running_as_failed():
 def get_pending_tasks():
     """Retrieves all tasks that were queued but never started."""
     with get_conn() as conn:
-        cur = conn.execute("SELECT task_id, command FROM tasks WHERE status = 'Pending' ORDER BY start_time ASC")
-        return [{"task_id": row["task_id"], "command": row["command"]} for row in cur.fetchall()]
+        cur = conn.execute("SELECT task_id, command, queue_name FROM tasks WHERE status = 'Pending' ORDER BY start_time ASC")
+        return [
+            {
+                "task_id": row["task_id"], 
+                "command": row["command"], 
+                "queue_name": row["queue_name"]
+            } for row in cur.fetchall()
+        ]
     
 def reset_task_for_retry(task_id: str, new_start_time: str):
     """Scrubs error output and resets a task to Pending."""

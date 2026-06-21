@@ -97,11 +97,20 @@ let tasksOffset = 0;
 const tasksLimit = 15;
 let hasMoreTasks = true;
 
-// Fetch and Render Tasks with Pagination
+// Fetch and Render Tasks with Pagination and Filters
 async function fetchTasks(offset = 0) {
     showLoading(40);
     try {
-        const response = await fetch(`/api/tasks?limit=${tasksLimit}&offset=${offset}`);
+        const queueVal = document.getElementById('filter-queue')?.value || '';
+        const statusVal = document.getElementById('filter-status')?.value || '';
+        const commandVal = document.getElementById('filter-command')?.value || '';
+        
+        let url = `/api/tasks?limit=${tasksLimit}&offset=${offset}`;
+        if (queueVal) url += `&queue=${encodeURIComponent(queueVal)}`;
+        if (statusVal) url += `&status=${encodeURIComponent(statusVal)}`;
+        if (commandVal) url += `&command=${encodeURIComponent(commandVal)}`;
+        
+        const response = await fetch(url);
         const newTasks = await response.json();
         const newTasksCount = Object.keys(newTasks).length;
         
@@ -210,7 +219,7 @@ function getStatusIcon(status) {
     return '⏺';
 }
 
-// UPDATED: Enforce strict DOM order and render icons
+// UPDATED: Enforce strict DOM order, prune removed tasks, and support empty placeholders
 function renderTasks(tasks) {
     const tbody = document.querySelector('#tasks-table tbody');
     
@@ -220,6 +229,11 @@ function renderTasks(tasks) {
     // Clear "No tasks found" placeholder if it exists
     if (tbody.firstElementChild && !tbody.firstElementChild.id) {
         tbody.firstElementChild.remove();
+    }
+
+    if (taskList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--base01); padding: 30px;">No tasks found matching the selected filters.</td></tr>`;
+        return;
     }
 
     taskList.forEach((task, index) => {
@@ -232,11 +246,17 @@ function renderTasks(tasks) {
 
         // NEW: Build the Combined Meta Column
         const shortId = task.task_id.split('-')[0];
+        let queueBadge = '';
+        if (task.queue_name) {
+            queueBadge = `<div style="margin-top: 5px;"><strong style="color: var(--base0);">Queue:</strong> <span style="color: var(--cyan); text-transform: uppercase; font-size: 0.9em; font-weight: bold;">${task.queue_name}</span></div>`;
+        }
+
         const detailsHtml = `
             <div style="font-weight: bold; color: var(--cyan); margin-bottom: 8px;">ID: ${shortId}</div>
             <div class="task-timeline" style="font-size: 0.8em; color: var(--base01); line-height: 1.4;">
                 <div><strong style="color: var(--base0);">Started:</strong><br>${formatTime(task.start_time)}</div>
                 <div style="margin-top: 5px;"><strong style="color: var(--base0);">Ended:</strong><br>${formatTime(task.end_time)}</div>
+                ${queueBadge}
             </div>
         `;
 
@@ -250,6 +270,12 @@ function renderTasks(tasks) {
                 <td style="vertical-align: top; text-align: center;"><div class="status-badge"></div></td>
                 <td class="output-cell" style="vertical-align: top;"><pre class="log-output"></pre></td>
             `;
+        } else {
+            // Update details block dynamically in case of status/queue changes
+            const detailsCell = tr.firstElementChild;
+            if (detailsCell) {
+                detailsCell.innerHTML = detailsHtml;
+            }
         }
 
         // CRITICAL: Enforce exact DOM order without removing/re-adding nodes 
@@ -285,6 +311,11 @@ function renderTasks(tasks) {
             pollSpecificTask(task.task_id);
         }
     });
+
+    // Remove extra rows in the DOM that are no longer in the current page/filter list
+    while (tbody.children.length > taskList.length) {
+        tbody.lastElementChild.remove();
+    }
 }
 
 // NEW: Global state for Remote Servers
@@ -875,6 +906,35 @@ async function fireGenericTask(cardName, safeName, formElement, schemaInputs) {
 // NEW: Close the Switchboard Result Modal
 function closeSwitchboardModal() {
     document.getElementById('switchboard-modal').style.display = 'none';
+}
+
+// NEW: Filter Handlers for Tasks Queue
+let filterDebounceTimeout = null;
+
+function applyFilters() {
+    loadedTasks = {}; // Clear loaded cache
+    fetchTasks(0);    // Start fetch from offset 0
+}
+
+function applyFiltersWithDebounce() {
+    if (filterDebounceTimeout) {
+        clearTimeout(filterDebounceTimeout);
+    }
+    filterDebounceTimeout = setTimeout(() => {
+        applyFilters();
+    }, 300); // 300ms debounce
+}
+
+function clearFilters() {
+    const queueFilter = document.getElementById('filter-queue');
+    const statusFilter = document.getElementById('filter-status');
+    const commandFilter = document.getElementById('filter-command');
+    
+    if (queueFilter) queueFilter.value = '';
+    if (statusFilter) statusFilter.value = '';
+    if (commandFilter) commandFilter.value = '';
+    
+    applyFilters();
 }
 
 fetchTasks(0); // Initial fetch on load

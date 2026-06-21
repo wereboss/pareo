@@ -218,9 +218,19 @@ async def execute_fs_action(request: FsRequest):
 
 
 @app.get("/api/tasks")
-def get_tasks(limit: Optional[int] = 15, offset: Optional[int] = 0):
-    """Retrieves historical tasks from SQLite with pagination (excluding large output logs)."""
-    return database.get_tasks_paginated(limit=limit, offset=offset)
+def get_tasks(
+    limit: Optional[int] = 15, 
+    offset: Optional[int] = 0,
+    queue: Optional[str] = None,
+    status: Optional[str] = None,
+    command: Optional[str] = None
+):
+    """Retrieves historical tasks from SQLite with pagination (excluding large output logs) and optional filters."""
+    # Clean empty strings into None
+    q = queue if queue else None
+    s = status if status else None
+    c = command if command else None
+    return database.get_tasks_paginated(limit=limit, offset=offset, queue=q, status=s, command=c)
 
 @app.get("/api/tasks/{task_id}")
 def get_single_task(task_id: str):
