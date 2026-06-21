@@ -132,7 +132,8 @@ async def run_command(task_id: str, command: str):
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True
         )
         running_processes[task_id] = process
         
@@ -165,7 +166,7 @@ async def run_command(task_id: str, command: str):
         running_processes.pop(task_id, None)
 
 async def cancel_task(task_id: str) -> bool:
-    """Cancels a task. If running, terminates the subprocess. If pending, updates status to Cancelled."""
+    """Cancels a task. If running, terminates the subprocess group. If pending, updates status to Cancelled."""
     task = database.get_task(task_id)
     if not task:
         raise ValueError("Task not found.")
@@ -174,10 +175,14 @@ async def cancel_task(task_id: str) -> bool:
         process = running_processes.get(task_id)
         if process:
             try:
-                # Send SIGTERM to the process
-                process.terminate()
+                import os
+                import signal
+                # Terminate the entire process group (shell + child processes)
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
             except Exception as e:
-                print(f"[!] Error terminating process for task {task_id}: {str(e)}")
+                print(f"[!] Error terminating process group for task {task_id}: {str(e)}")
         
         end_time = datetime.now().isoformat()
         database.update_task_status(task_id, "Cancelled", end_time)
