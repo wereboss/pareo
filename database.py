@@ -33,6 +33,19 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Migrate NULL queue_names to their correct legacy mappings
+        conn.execute("""
+            UPDATE tasks
+            SET queue_name = CASE
+                WHEN command LIKE 'ffmpeg%' THEN 'media'
+                WHEN command LIKE 'aria2c%' THEN 'network'
+                WHEN command LIKE 'cp %' OR command LIKE 'mv %' OR command LIKE 'rm %' OR command LIKE 'tar %' OR command LIKE 'scp %' THEN 'fs'
+                ELSE 'default'
+            END
+            WHERE queue_name IS NULL
+        """)
+        conn.commit()
+
 def insert_task(task_id: str, command: str, status: str, start_time: str, queue_name: str = "default"):
     with get_conn() as conn:
         conn.execute(
