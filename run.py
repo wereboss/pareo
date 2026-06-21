@@ -6,7 +6,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "server:app", 
         host="0.0.0.0", 
-        port=9025, 
+        port=9026, 
         workers=1,     # Keeps our asyncio queues in a single memory space
         reload=False   # Saves CPU/RAM by disabling the file watcher
     )

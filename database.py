@@ -52,6 +52,15 @@ def get_all_tasks():
         cur = conn.execute("SELECT * FROM tasks ORDER BY start_time DESC")
         return {row["task_id"]: dict(row) for row in cur.fetchall()}
 
+def get_tasks_paginated(limit: int = 15, offset: int = 0):
+    """Retrieves metadata of historical tasks excluding logs with pagination."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "SELECT task_id, command, status, start_time, end_time FROM tasks ORDER BY start_time DESC LIMIT ? OFFSET ?",
+            (limit, offset)
+        )
+        return {row["task_id"]: dict(row) for row in cur.fetchall()}
+
 def get_task(task_id: str):
     with get_conn() as conn:
         cur = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))

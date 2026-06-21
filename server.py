@@ -10,6 +10,7 @@ from typing import List, Optional
 import executor
 import command_builder
 import database
+import process_manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -217,9 +218,9 @@ async def execute_fs_action(request: FsRequest):
 
 
 @app.get("/api/tasks")
-def get_tasks():
-    """Retrieves all historical tasks from SQLite."""
-    return database.get_all_tasks()
+def get_tasks(limit: Optional[int] = 15, offset: Optional[int] = 0):
+    """Retrieves historical tasks from SQLite with pagination (excluding large output logs)."""
+    return database.get_tasks_paginated(limit=limit, offset=offset)
 
 @app.get("/api/tasks/{task_id}")
 def get_single_task(task_id: str):
@@ -307,6 +308,70 @@ async def execute_generic(request: GenericTaskRequest):
         "queue": queue_name,
         "final_command": command
     }
+
+class ProcessActionRequest(BaseModel):
+    name: str
+
+class ProcessStopRequest(BaseModel):
+    name: str
+    force: Optional[bool] = False
+
+@app.get("/api/config/processes")
+def get_processes_config():
+    """Serves the processes configuration schema."""
+    config = command_builder.load_config()
+    return config.get("process_monitors", {})
+
+@app.get("/api/processes/status")
+async def get_all_processes_status():
+    """Retrieves current status for all configured server processes in parallel."""
+    config = command_builder.load_config()
+    monitors = config.get("process_monitors", {})
+    names = list(monitors.keys())
+    tasks = [process_manager.get_process_status(name, monitors[name]) for name in names]
+    results = await asyncio.gather(*tasks)
+    return {name: res for name, res in zip(names, results)}
+
+@app.post("/api/processes/start")
+async def start_monitored_process(request: ProcessActionRequest):
+    """Spawns a configured process group in the background."""
+    config = command_builder.load_config()
+    monitors = config.get("process_monitors", {})
+    if request.name not in monitors:
+        raise HTTPException(status_code=404, detail="Process configuration not found.")
+    
+    res = await process_manager.start_process(request.name, monitors[request.name])
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["message"])
+    return res
+
+@app.post("/api/processes/stop")
+async def stop_monitored_process(request: ProcessStopRequest):
+    """Stops or force-kills a running process group."""
+    config = command_builder.load_config()
+    monitors = config.get("process_monitors", {})
+    if request.name not in monitors:
+        raise HTTPException(status_code=404, detail="Process configuration not found.")
+    
+    res = await process_manager.stop_process(request.name, monitors[request.name], force=request.force)
+    if not res["success"]:
+        raise HTTPException(status_code=400, detail=res["message"])
+    return res
+
+@app.get("/api/processes/logs")
+def get_monitored_process_logs(name: str, lines: Optional[int] = 100):
+    """Returns the tail end of the log file for the specified process."""
+    config = command_builder.load_config()
+    monitors = config.get("process_monitors", {})
+    if name not in monitors:
+        raise HTTPException(status_code=404, detail="Process configuration not found.")
+    
+    log_file = monitors[name].get("log_file")
+    if not log_file:
+        raise HTTPException(status_code=400, detail="No log file configured for this process.")
+    
+    content = process_manager.read_last_lines(log_file, lines)
+    return {"name": name, "logs": content}
 
     # THIS MUST BE THE VERY LAST THING IN THE FILE
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -113,5 +113,25 @@
                 "requires_remote": true
             }
         }
-    }    
+    },
+    "process_monitors": {
+        "Numera Engine": {
+            "command": "./run.sh",
+            "port": 9025,
+            "cwd": "/home/sayang/Programs/numera",
+            "log_file": "logs/numera.log"
+        },
+        "Stelata Engine": {
+            "command": "./run.sh",
+            "port": 9027,
+            "cwd": "/home/sayang/Programs/stelata",
+            "log_file": "logs/stelata.log"
+        },
+        "Papyro Engine": {
+            "command": "./run.sh",
+            "port": 9028,
+            "cwd": "/home/sayang/Programs/papyro",
+            "log_file": "logs/papyro.log"
+        }
+    }
 }

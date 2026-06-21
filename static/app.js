@@ -3,6 +3,26 @@ const activePolls = new Set();
 // NEW: Global state to hold the pipeline configuration
 let ffmpegConfig = {};
 
+// NEW: Global loading progress bar control
+function showLoading(percent = 30) {
+    const bar = document.getElementById('global-loading-bar');
+    if (!bar) return;
+    bar.style.opacity = '1';
+    bar.style.width = percent + '%';
+}
+
+function hideLoading() {
+    const bar = document.getElementById('global-loading-bar');
+    if (!bar) return;
+    bar.style.width = '100%';
+    setTimeout(() => {
+        bar.style.opacity = '0';
+        setTimeout(() => {
+            bar.style.width = '0%';
+        }, 300);
+    }, 200);
+}
+
 // NEW: Helper function to make ISO timestamps human-readable (e.g., Jun 08, 14:30:00)
 function formatTime(isoString) {
     if (!isoString) return '--';
@@ -16,6 +36,8 @@ function formatTime(isoString) {
 
 // Handle Navigation Toggling
 // UPDATED: Bulletproof Tab Switcher
+let processPollInterval = null;
+
 function switchTab(tabId) {
     // 1. Remove 'active' class from ALL navigation buttons
     document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -35,6 +57,19 @@ function switchTab(tabId) {
     // 4. Show the targeted content wrapper
     const activeContent = document.getElementById(`tab-${tabId}`);
     if (activeContent) activeContent.style.display = 'block';
+
+    // Monitor processes dynamically when in Utilities tab
+    if (tabId === 'utilities') {
+        fetchProcessStatuses();
+        if (!processPollInterval) {
+            processPollInterval = setInterval(fetchProcessStatuses, 5000);
+        }
+    } else {
+        if (processPollInterval) {
+            clearInterval(processPollInterval);
+            processPollInterval = null;
+        }
+    }
 }
 
 // Shows a temporary success message next to the button
@@ -56,14 +91,96 @@ async function executeCommand(cmd) {
     }
 }
 
-// Fetch and Render Tasks
-async function fetchTasks() {
+// NEW: Global state for tasks pagination
+let loadedTasks = {};
+let tasksOffset = 0;
+const tasksLimit = 15;
+let hasMoreTasks = true;
+
+// Fetch and Render Tasks with Pagination
+async function fetchTasks(offset = 0) {
+    showLoading(40);
     try {
-        const response = await fetch('/api/tasks');
-        const tasks = await response.json();
-        renderTasks(tasks);
+        const response = await fetch(`/api/tasks?limit=${tasksLimit}&offset=${offset}`);
+        const newTasks = await response.json();
+        const newTasksCount = Object.keys(newTasks).length;
+        
+        if (offset === 0) {
+            // Keep first page logs if they were lazy-loaded
+            const preservedLogs = {};
+            Object.keys(loadedTasks).forEach(tid => {
+                if (loadedTasks[tid].output) {
+                    preservedLogs[tid] = loadedTasks[tid].output;
+                }
+            });
+            
+            loadedTasks = newTasks;
+            
+            Object.keys(loadedTasks).forEach(tid => {
+                if (preservedLogs[tid]) {
+                    loadedTasks[tid].output = preservedLogs[tid];
+                }
+            });
+            
+            tasksOffset = 0;
+        } else {
+            // Append next page
+            Object.assign(loadedTasks, newTasks);
+            tasksOffset = offset;
+        }
+        
+        hasMoreTasks = newTasksCount === tasksLimit;
+        renderTasks(loadedTasks);
+        
+        const loadMoreContainer = document.getElementById('tasks-load-more-container');
+        if (loadMoreContainer) {
+            loadMoreContainer.style.display = hasMoreTasks ? 'block' : 'none';
+        }
     } catch (error) {
         console.error("Failed to fetch tasks:", error);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadMoreTasks() {
+    const nextOffset = tasksOffset + tasksLimit;
+    const btn = document.getElementById('btn-load-more-tasks');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Loading...";
+    }
+    await fetchTasks(nextOffset);
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Load More Tasks";
+    }
+}
+
+async function lazyLoadTaskOutput(taskId, btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<div class="css-spinner" style="border-top-color: var(--cyan); width: 12px; height: 12px; display: inline-block; margin-right: 5px;"></div> Loading...`;
+    }
+    try {
+        const response = await fetch(`/api/tasks/${taskId}`);
+        const task = await response.json();
+        if (task && !task.error) {
+            if (loadedTasks[taskId]) {
+                loadedTasks[taskId].output = task.output;
+            }
+            const row = document.getElementById(`row-${taskId}`);
+            const preElement = row?.querySelector('.log-output');
+            if (preElement) {
+                preElement.textContent = task.output || '(No log output)';
+            }
+        }
+    } catch (error) {
+        console.error("Failed to lazy load task output:", error);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = "📄 Retry Loading";
+        }
     }
 }
 
@@ -147,12 +264,18 @@ function renderTasks(tasks) {
         // NEW: Call the helper function
         updateTaskBadge(badge, task);
 
-        // Update output dynamically
-        if (preElement.textContent !== displayData) {
-            preElement.textContent = displayData;
-            if (task.status === 'Running') {
-                // Keep scroll anchored to bottom
-                setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
+        // Update output dynamically (lazy loading for completed/failed tasks)
+        if (task.status !== 'Running' && !task.output) {
+            if (!preElement.querySelector('.btn-lazy-load')) {
+                preElement.innerHTML = `<button class="btn btn-sm btn-lazy-load" onclick="lazyLoadTaskOutput('${task.task_id}', this)" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 4px 10px; font-size: 0.85em; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px;">📄 View Logs</button>`;
+            }
+        } else {
+            if (preElement.textContent !== displayData || preElement.querySelector('.btn-lazy-load')) {
+                preElement.textContent = displayData;
+                if (task.status === 'Running') {
+                    // Keep scroll anchored to bottom
+                    setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
+                }
             }
         }
 
@@ -754,7 +877,7 @@ function closeSwitchboardModal() {
     document.getElementById('switchboard-modal').style.display = 'none';
 }
 
-fetchTasks(); // Initial fetch on load
+fetchTasks(0); // Initial fetch on load
 
 // ADD THIS at the very bottom of app.js (below fetchTasks())
 fetchProfiles();
@@ -763,6 +886,217 @@ fetchBookmarks(); // NEW: Load the global path shortcuts
 fetchRemotesConfig(); // NEW: Load remote servers
 fetchSwitchboardConfig();
 fetchGenericCards();
+fetchProcessConfig(); // NEW: Load local process monitors config
 switchTab('tasks'); // NEW: Force the UI to sync and show tasks on load
-// Start the polling loop (every 2 seconds)
-setInterval(fetchTasks, 150000);
+// Start the polling loop (every 2.5 minutes)
+setInterval(() => fetchTasks(0), 150000);
+
+// --- PROCESS MONITORING LOGIC ---
+let processConfig = {};
+let activeLogProcess = null;
+let logRefreshInterval = null;
+
+async function fetchProcessConfig() {
+    try {
+        const response = await fetch('/api/config/processes');
+        processConfig = await response.json();
+        renderProcessListPlaceholder();
+        
+        // Only fetch statuses on load if we are on the utilities tab
+        const activeTabBtn = document.querySelector('.nav-btn.active');
+        if (activeTabBtn && activeTabBtn.id === 'btn-utilities') {
+            fetchProcessStatuses();
+        }
+    } catch (error) {
+        console.error("Failed to fetch process configuration:", error);
+    }
+}
+
+function renderProcessListPlaceholder() {
+    const container = document.getElementById('process-list');
+    if (!container) return;
+    
+    if (Object.keys(processConfig).length === 0) {
+        container.innerHTML = `<p style="color: #999; font-style: italic; font-size: 0.9em;">No processes configured in config.json.</p>`;
+        return;
+    }
+    
+    let html = '';
+    for (const [name, info] of Object.entries(processConfig)) {
+        const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
+        html += `
+            <div class="process-card" id="proc-card-${safeName}" style="border: 1px solid var(--base01) !important; padding: 12px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; background: var(--base03) !important; color: var(--base0) !important;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div>
+                        <strong style="font-size: 1.05em; color: var(--cyan);">${name}</strong>
+                        <span style="font-size: 0.85em; color: var(--base00); margin-left: 8px;">(Port: ${info.port})</span>
+                    </div>
+                    <span class="process-status-badge badge" id="proc-badge-${safeName}" style="background: var(--base01); color: var(--base3); border-radius: 12px; padding: 3px 8px; font-size: 0.8em; font-weight: bold;">Checking...</span>
+                </div>
+                
+                <div style="font-size: 0.85em; background: var(--base02) !important; padding: 6px 10px; border-radius: 4px; font-family: monospace; border-left: 3px solid var(--cyan); overflow-x: auto; white-space: nowrap; margin: 4px 0; color: var(--cyan) !important;">
+                    <code>${info.command}</code>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 4px;">
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-sm proc-start-btn" onclick="startProcess('${name}')" style="background: #27ae60; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" disabled>Start</button>
+                        <button class="btn btn-sm proc-stop-btn" onclick="stopProcess('${name}', false)" style="background: #f39c12; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" disabled>Stop</button>
+                        <button class="btn btn-sm proc-kill-btn" onclick="stopProcess('${name}', true)" style="background: #e74c3c; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" disabled>Force Kill</button>
+                    </div>
+                    ${info.log_file ? `<button class="btn btn-sm" onclick="openProcessLogsModal('${name}')" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">View Logs</button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+    container.innerHTML = html;
+}
+
+async function fetchProcessStatuses() {
+    if (Object.keys(processConfig).length === 0) return;
+    try {
+        const response = await fetch('/api/processes/status');
+        if (!response.ok) return;
+        const statuses = await response.json();
+        
+        for (const [name, statusInfo] of Object.entries(statuses)) {
+            const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
+            const badge = document.getElementById(`proc-badge-${safeName}`);
+            const card = document.getElementById(`proc-card-${safeName}`);
+            const startBtn = card?.querySelector('.proc-start-btn');
+            const stopBtn = card?.querySelector('.proc-stop-btn');
+            const killBtn = card?.querySelector('.proc-kill-btn');
+            
+            if (!badge) continue;
+            
+            if (statusInfo.status === 'Running') {
+                const pidStr = statusInfo.pid ? ` (PID: ${statusInfo.pid})` : '';
+                badge.textContent = `Running${pidStr}`;
+                badge.style.background = '#2ecc71'; // Green
+                badge.style.color = '#fff';
+                
+                if (startBtn) startBtn.disabled = true;
+                if (stopBtn) stopBtn.disabled = false;
+                if (killBtn) killBtn.disabled = false;
+            } else {
+                badge.textContent = 'Stopped';
+                badge.style.background = '#95a5a6'; // Gray
+                badge.style.color = '#fff';
+                
+                if (startBtn) startBtn.disabled = false;
+                if (stopBtn) stopBtn.disabled = true;
+                if (killBtn) killBtn.disabled = true;
+            }
+        }
+    } catch (error) {
+        console.error("Failed to fetch process statuses:", error);
+    }
+}
+
+async function startProcess(name) {
+    const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
+    const badge = document.getElementById(`proc-badge-${safeName}`);
+    if (badge) {
+        badge.textContent = 'Starting...';
+        badge.style.background = '#3498db';
+        badge.style.color = '#fff';
+    }
+    
+    try {
+        const response = await fetch('/api/processes/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            setTimeout(fetchProcessStatuses, 1000); // Small delay to let it bind port
+        } else {
+            alert(`Error starting process: ${data.detail}`);
+            fetchProcessStatuses();
+        }
+    } catch (error) {
+        console.error("Failed to start process:", error);
+        fetchProcessStatuses();
+    }
+}
+
+async function stopProcess(name, force = false) {
+    const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
+    const badge = document.getElementById(`proc-badge-${safeName}`);
+    if (badge) {
+        badge.textContent = force ? 'Killing...' : 'Stopping...';
+        badge.style.background = '#e74c3c';
+        badge.style.color = '#fff';
+    }
+    
+    try {
+        const response = await fetch('/api/processes/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, force })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            setTimeout(fetchProcessStatuses, 1000); // Give it a short delay to terminate
+        } else {
+            alert(`Error stopping process: ${data.detail}`);
+            fetchProcessStatuses();
+        }
+    } catch (error) {
+        console.error("Failed to stop process:", error);
+        fetchProcessStatuses();
+    }
+}
+
+async function openProcessLogsModal(name) {
+    activeLogProcess = name;
+    document.getElementById('process-logs-title').textContent = `Logs: ${name}`;
+    document.getElementById('process-logs-modal').style.display = 'flex';
+    
+    const refreshBtn = document.getElementById('process-logs-refresh-btn');
+    refreshBtn.onclick = () => loadProcessLogs(name);
+    
+    loadProcessLogs(name);
+    
+    // Auto-refresh logs every 2 seconds while modal is open
+    if (logRefreshInterval) clearInterval(logRefreshInterval);
+    logRefreshInterval = setInterval(() => loadProcessLogs(name), 2000);
+}
+
+async function loadProcessLogs(name) {
+    const pre = document.getElementById('process-logs-output');
+    if (!pre) return;
+    
+    try {
+        const response = await fetch(`/api/processes/logs?name=${encodeURIComponent(name)}&lines=150`);
+        if (!response.ok) {
+            const err = await response.json();
+            pre.textContent = `Error loading logs: ${err.detail}`;
+            return;
+        }
+        const data = await response.json();
+        
+        // Save scroll position
+        const isScrolledToBottom = pre.scrollHeight - pre.clientHeight <= pre.scrollTop + 50;
+        
+        pre.textContent = data.logs || '(Empty logs)';
+        
+        // Keep scrolled to bottom if it was already at the bottom
+        if (isScrolledToBottom) {
+            pre.scrollTop = pre.scrollHeight;
+        }
+    } catch (error) {
+        console.error("Failed to load logs:", error);
+        pre.textContent = `Network error loading logs: ${error.message}`;
+    }
+}
+
+function closeProcessLogsModal() {
+    document.getElementById('process-logs-modal').style.display = 'none';
+    activeLogProcess = null;
+    if (logRefreshInterval) {
+        clearInterval(logRefreshInterval);
+        logRefreshInterval = null;
+    }
+}

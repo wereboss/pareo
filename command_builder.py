@@ -3,8 +3,12 @@ import os
 
 def load_config():
     if os.path.exists('config.json'):
-        with open('config.json', 'r') as f:
-            return json.load(f)
+        try:
+            with open('config.json', 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[!] Error loading config.json: {str(e)}")
+            return {}
     return {}
 
 def build_ffmpeg_command(input_path: str, output_path: str, profile_name: str) -> str:
