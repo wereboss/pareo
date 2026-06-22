@@ -261,6 +261,18 @@ async def cancel_task_endpoint(task_id: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@app.post("/api/tasks/purge")
+def purge_tasks_endpoint(age: str):
+    """Purges completed, failed, or cancelled tasks older than the specified age."""
+    if age not in ['1d', '1w', '2w', 'all']:
+        raise HTTPException(status_code=400, detail="Invalid age threshold. Must be '1d', '1w', '2w', or 'all'.")
+    try:
+        deleted_count = database.purge_tasks(age)
+        return {"message": f"Successfully purged {deleted_count} task(s).", "count": deleted_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/config/switchboard")
 def get_switchboard_config():
     """Serves the Switchboard layout structure."""

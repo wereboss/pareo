@@ -961,6 +961,35 @@ function clearFilters() {
     applyFilters();
 }
 
+async function purgeTasks() {
+    const ageSelect = document.getElementById('purge-age');
+    if (!ageSelect) return;
+    const age = ageSelect.value;
+    
+    let confirmationMsg = `Are you sure you want to purge tasks older than ${ageSelect.options[ageSelect.selectedIndex].text}?`;
+    if (age === 'all') {
+        confirmationMsg = "Are you sure you want to purge the ENTIRE tasks queue history? (This will NOT affect active Pending or Running tasks)";
+    }
+    
+    if (!confirm(confirmationMsg)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/tasks/purge?age=${age}`, { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            alert(data.message);
+            applyFilters(); // Instantly refresh the tasks list
+        } else {
+            alert(`Error: ${data.detail}`);
+        }
+    } catch (error) {
+        console.error("Purge failed:", error);
+        alert("Failed to connect to the Pareo engine.");
+    }
+}
+
 fetchTasks(0); // Initial fetch on load
 
 // ADD THIS at the very bottom of app.js (below fetchTasks())

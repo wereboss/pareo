@@ -21,7 +21,19 @@
 
         <div id="tab-tasks" style="display: block;">
             <div class="card">
-                <h4>Active Tasks</h4>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                    <h4 style="margin: 0;">Active Tasks</h4>
+                    <div class="purge-control" style="display: flex; align-items: center; gap: 8px;">
+                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1); margin: 0;">Purge Tasks:</label>
+                        <select id="purge-age" style="padding: 5px 8px; font-size: 0.85em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                            <option value="1d">Older than 1 Day</option>
+                            <option value="1w">Older than 1 Week</option>
+                            <option value="2w">Older than 2 Weeks</option>
+                            <option value="all">Whole Queue</option>
+                        </select>
+                        <button class="btn btn-sm" onclick="purgeTasks()" style="padding: 5px 12px; font-size: 0.85em; cursor: pointer; border-radius: 4px; font-weight: bold; background: var(--base03) !important; color: var(--cyan) !important; border: 1px solid var(--cyan) !important;">Purge</button>
+                    </div>
+                </div>
                 
                 <div class="filters-bar" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;">
                     <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 150px; flex-grow: 1;">

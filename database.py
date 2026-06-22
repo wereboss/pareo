@@ -149,3 +149,30 @@ def update_task_start_time(task_id: str, start_time: str):
     with get_conn() as conn:
         conn.execute("UPDATE tasks SET start_time = ? WHERE task_id = ?", (start_time, task_id))
         conn.commit()
+
+
+def purge_tasks(age: str) -> int:
+    """Purges historical tasks (excluding active Pending/Running ones) based on the age threshold."""
+    from datetime import datetime, timedelta
+    
+    if age == 'all':
+        query = "DELETE FROM tasks WHERE status NOT IN ('Pending', 'Running')"
+        params = []
+    else:
+        now = datetime.now()
+        if age == '1d':
+            cutoff = now - timedelta(days=1)
+        elif age == '1w':
+            cutoff = now - timedelta(weeks=1)
+        elif age == '2w':
+            cutoff = now - timedelta(weeks=2)
+        else:
+            raise ValueError("Invalid age threshold")
+            
+        query = "DELETE FROM tasks WHERE status NOT IN ('Pending', 'Running') AND start_time < ?"
+        params = [cutoff.isoformat()]
+        
+    with get_conn() as conn:
+        res = conn.execute(query, params)
+        conn.commit()
+        return res.rowcount
