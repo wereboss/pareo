@@ -1,0 +1,485 @@
+INFO:     Started server process [48590]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:9025 (Press CTRL+C to quit)
+INFO:     192.168.0.129:49734 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49735 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49735 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49738 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49737 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49739 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49735 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49734 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49738 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49737 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49739 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49736 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49734 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49734 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [48590]
+Terminated
+INFO:     Started server process [69940]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:9025 (Press CTRL+C to quit)
+INFO:     192.168.0.233:46864 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46864 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46866 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46866 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46864 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46868 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46870 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46872 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46874 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:46874 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46874 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46878 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46880 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46882 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46900 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46902 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46904 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46906 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46908 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46910 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:46912 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51034 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51034 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51042 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51054 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51072 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51058 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51082 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51034 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51054 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51058 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51042 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51072 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51072 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.131:51072 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.131:48538 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.131:34222 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47154 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47154 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47156 - "GET /static/js/games/template_d.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47154 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47180 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47182 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47184 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47186 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47156 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47154 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:47154 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47154 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47238 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47258 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47264 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47266 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47272 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47272 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47274 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47276 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47278 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47280 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47282 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47294 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47300 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47298 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47308 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47310 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47312 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47314 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47314 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47316 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47316 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47318 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47320 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47322 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47348 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:47350 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48486 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48486 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48496 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48492 - "GET /static/js/games/template_b.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48494 - "GET /static/js/games/template_d.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48490 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48488 - "GET /static/js/games/template_a.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48486 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48494 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48492 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48496 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48490 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48490 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48490 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48516 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48534 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48536 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48538 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48540 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48542 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48548 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48948 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48948 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48950 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48954 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48948 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48952 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48958 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48956 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48950 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:48960 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48960 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:48982 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49000 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49004 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49008 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49022 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49046 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49066 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49114 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49138 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49138 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49208 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49222 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49240 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49254 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49292 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49306 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49320 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49358 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49372 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49388 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49404 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49418 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49440 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:49506 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49677 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49676 - "GET /admin HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49676 - "GET /static/css/admin.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49677 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49685 - "GET /static/js/admin.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49684 - "GET /static/js/games/template_b.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49683 - "GET /static/js/games/template_a.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49684 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49683 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49685 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49684 - "GET /static/js/games/template_d.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49684 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49685 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49683 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49683 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49685 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49690 - "GET /static/manifest.json HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49685 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49685 - "GET /api/admin/games HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49685 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49702 - "GET /api/games/match_counts HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49714 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50138 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50142 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50144 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50146 - "GET /static/js/games/template_a.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50142 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50152 - "GET /static/js/games/template_d.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50148 - "GET /static/js/games/template_b.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50144 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50142 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50146 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50150 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50152 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:50152 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50158 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50164 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50168 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50176 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50186 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50190 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50192 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50200 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50202 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50206 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50208 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:50212 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50242 - "GET /admin HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50242 - "GET /static/css/admin.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50243 - "GET /static/js/admin.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50242 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50242 - "GET /api/admin/games HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50246 - "GET /admin HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50246 - "GET /static/css/admin.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50245 - "GET /static/js/admin.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50245 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50245 - "GET /api/admin/games HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50249 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50249 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50250 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50251 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50253 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50252 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50254 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50249 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50250 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50251 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50253 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50254 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50249 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50255 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50249 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50249 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50256 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50262 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50284 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50345 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50345 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50348 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50350 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50349 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50347 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50345 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50349 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50350 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50348 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50351 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50352 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50352 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50355 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50356 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50354 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50353 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50352 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50346 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50356 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50356 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50357 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50356 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50356 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50356 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50361 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50361 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50360 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50360 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50361 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50360 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50361 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50365 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50363 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50364 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50362 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50360 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50361 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50364 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50366 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50364 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:50364 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51767 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51767 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51768 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51771 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51770 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51769 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51767 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51769 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51768 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51772 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51766 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51776 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51859 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51859 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51860 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51860 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51861 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51862 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51864 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51863 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51860 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51859 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51864 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51862 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51861 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51862 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51865 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51862 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51862 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.129:51871 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51004 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51004 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51006 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51006 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51004 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51008 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51010 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51014 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51014 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51024 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51032 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51092 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51094 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51096 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51096 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51098 - "GET /api/games/feed_the_animals HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51100 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51104 - "GET /api/games/color_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51110 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51112 - "GET /api/games/put_in_the_box HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51112 - "GET /api/games/feed_the_animals HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51112 - "GET /api/games/arrange_dining HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51116 - "GET /api/games/park_cars HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51116 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51118 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51118 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51118 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51120 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51122 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51124 - "GET /api/games/drag_spell HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51292 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51292 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51296 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51298 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51292 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51302 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51300 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51302 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51302 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51338 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51342 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51360 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51364 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51366 - "GET /api/games/match_counts HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51370 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51372 - "GET /api/games/match_counts HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51372 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51374 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51380 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51382 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51384 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51386 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51388 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51390 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51392 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51394 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51396 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51398 - "GET /api/games/put_in_the_box HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51400 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51402 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51404 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51404 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55660 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55660 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55661 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55660 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55661 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55662 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55660 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55664 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55662 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55661 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55660 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55664 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55661 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55662 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55662 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55666 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55662 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51406 - "GET /api/games/word_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55663 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55665 - "GET /api/games/park_cars HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55675 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51408 - "GET /api/games/starting_letters HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51410 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55684 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51412 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51414 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55691 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51416 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55694 - "GET /api/games/match_names HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51418 - "GET /api/games/emoji_match HTTP/1.1" 200 OK
+INFO:     192.168.0.129:55701 - "GET /api/games/sound_match HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51622 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51626 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51628 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51632 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51630 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51634 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51626 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51636 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51634 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51628 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51628 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51628 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51650 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51654 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51664 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51666 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51676 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51680 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51684 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51686 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51688 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51688 - "GET /api/games/arrange_dining HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51692 - "GET /api/games/park_cars HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51694 - "GET /api/games/dice_and_do HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51696 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51698 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51700 - "GET /api/games/put_in_the_box HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51710 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51714 - "GET /api/games/animal_sorter HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51720 - "GET /api/games/touch_count HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51734 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51736 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51742 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51744 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51748 - "GET /api/games/touch_addition HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51750 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51752 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51754 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51756 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51758 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51760 - "GET /api/games/odd_one_out HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51762 - "GET /api/games/match_counts HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51784 - "GET /static/css/style.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51786 - "GET /static/js/games/template_c.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51788 - "GET /static/js/games/template_e.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51790 - "GET /static/js/games/template_f.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51784 - "GET /static/js/games/template_h.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51786 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51792 - "GET /static/js/games/template_g.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51794 - "GET /static/js/games/template_i.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51788 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:51786 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.233:51786 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56620 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56621 - "GET /static/js/games/template_b.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56620 - "GET /static/js/games/template_a.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56620 - "GET /static/js/games/template_g.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56621 - "GET /static/js/games/template_d.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56622 - "GET /static/js/games/template_c.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56623 - "GET /static/css/style.css HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56625 - "GET /static/js/games/template_f.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56624 - "GET /static/js/games/template_e.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56621 - "GET /static/js/games/template_i.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56620 - "GET /static/js/games/template_h.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56625 - "GET /static/js/games/template_j.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56622 - "GET /static/js/app.js HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56626 - "GET /static/manifest.json HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56622 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56622 - "GET /api/games/published HTTP/1.1" 200 OK
+INFO:     192.168.0.129:56622 - "GET /api/games/touch_addition HTTP/1.1" 200 OK

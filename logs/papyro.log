@@ -1,0 +1,58 @@
+=========================================
+📝 Starting Papyro Worksheet Production Server
+=========================================
+🔌 Activating virtual environment...
+🌐 Production server is spinning up on http://0.0.0.0:9028
+=========================================
+INFO:     Uvicorn running on http://0.0.0.0:9028 (Press CTRL+C to quit)
+INFO:     Started parent process [55047]
+INFO:     Started server process [55162]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Started server process [55160]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Started server process [55163]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Started server process [55159]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     192.168.0.129:49895 - "GET / HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49895 - "GET /static/css/app.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49896 - "GET /static/css/worksheet.css HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49897 - "GET /static/js/app.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49896 - "GET /static/js/templates/math.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49895 - "GET /static/js/templates/search.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49897 - "GET /static/js/api.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49896 - "GET /static/js/templates/maze.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49895 - "GET /static/js/templates/blanks.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49897 - "GET /static/js/templates/count.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49895 - "GET /static/js/templates/base.js HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49895 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     Received SIGTERM, exiting.
+INFO:     Terminated child process [55159]
+INFO:     Terminated child process [55160]
+INFO:     Terminated child process [55162]
+INFO:     Terminated child process [55163]
+INFO:     Waiting for child process [55159]
+INFO:     Shutting down
+INFO:     Shutting down
+INFO:     Shutting down
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [55160]
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [55159]
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [55163]
+INFO:     Waiting for child process [55160]
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [55162]
+INFO:     Waiting for child process [55162]
+INFO:     Waiting for child process [55163]
+INFO:     Stopping parent process [55047]

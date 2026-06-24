@@ -1,0 +1,582 @@
+ffmpeg version 6.0-6ubuntu1.1 Copyright (c) 2000-2023 the FFmpeg developers
+  built with gcc 13 (Ubuntu 13.2.0-4ubuntu3)
+  configuration: --prefix=/usr --extra-version=6ubuntu1.1 --toolchain=hardened --libdir=/usr/lib/x86_64-linux-gnu --incdir=/usr/include/x86_64-linux-gnu --arch=amd64 --enable-gpl --disable-stripping --enable-gnutls --enable-ladspa --enable-libaom --enable-libass --enable-libbluray --enable-libbs2b --enable-libcaca --enable-libcdio --enable-libcodec2 --enable-libdav1d --enable-libflite --enable-libfontconfig --enable-libfreetype --enable-libfribidi --enable-libglslang --enable-libgme --enable-libgsm --enable-libjack --enable-libmp3lame --enable-libmysofa --enable-libopenjpeg --enable-libopenmpt --enable-libopus --enable-libpulse --enable-librabbitmq --enable-librist --enable-librubberband --enable-libshine --enable-libsnappy --enable-libsoxr --enable-libspeex --enable-libsrt --enable-libssh --enable-libsvtav1 --enable-libtheora --enable-libtwolame --enable-libvidstab --enable-libvorbis --enable-libvpx --enable-libwebp --enable-libx265 --enable-libxml2 --enable-libxvid --enable-libzimg --enable-libzmq --enable-libzvbi --enable-lv2 --enable-omx --enable-openal --enable-opencl --enable-opengl --enable-sdl2 --disable-sndio --enable-libjxl --enable-pocketsphinx --enable-librsvg --enable-libvpl --disable-libmfx --enable-libdc1394 --enable-libdrm --enable-libiec61883 --enable-chromaprint --enable-frei0r --enable-libx264 --enable-libplacebo --enable-librav1e --enable-shared
+  libavutil      58.  2.100 / 58.  2.100
+  libavcodec     60.  3.100 / 60.  3.100
+  libavformat    60.  3.100 / 60.  3.100
+  libavdevice    60.  1.100 / 60.  1.100
+  libavfilter     9.  3.100 /  9.  3.100
+  libswscale      7.  1.100 /  7.  1.100
+  libswresample   4. 10.100 /  4. 10.100
+  libpostproc    57.  1.100 / 57.  1.100
+Input #0, matroska,webm, from '/home/sayang/Videos/temp/Ted.Lasso.S03E06.720p.ATVP.WEBRip.x264-GalaxyTV.mkv':
+  Metadata:
+    title           : Ted.Lasso.S03E06.720p.ATVP.WEBRip.x264-GalaxyTV
+    COMMENT         : GalaxyTV - small excellence!
+    ENCODER         : Lavf58.76.100
+  Duration: 01:03:13.84, start: 0.000000, bitrate: 861 kb/s
+  Chapters:
+    Chapter #0:0: start 0.000000, end 375.750000
+      Metadata:
+        title           : Chapter 1
+    Chapter #0:1: start 375.750000, end 397.750000
+      Metadata:
+        title           : Intro
+    Chapter #0:2: start 397.750000, end 3793.798000
+      Metadata:
+        title           : Chapter 2
+  Stream #0:0: Video: h264 (High), yuv420p(tv, bt709, progressive), 1280x640 [SAR 1:1 DAR 2:1], 23.98 fps, 23.98 tbr, 1k tbn (default)
+    Metadata:
+      title           : GalaxyTV - small excellence!
+      BPS             : 9985289
+      NUMBER_OF_FRAMES: 90960
+      NUMBER_OF_BYTES : 4735261300
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      ENCODER         : Lavc58.134.100 libx264
+      DURATION        : 01:03:13.833000000
+  Stream #0:1(eng): Audio: aac (LC), 48000 Hz, stereo, fltp (default) (original)
+    Metadata:
+      title           : GalaxyTV - small excellence!
+      BPS             : 767998
+      NUMBER_OF_FRAMES: 118556
+      NUMBER_OF_BYTES : 364204032
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      ENCODER         : Lavc58.134.100 libfdk_aac
+      DURATION        : 01:03:13.835000000
+  Stream #0:2(eng): Subtitle: subrip (default)
+    Metadata:
+      title           : GalaxyTV - small excellence!
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      BPS             : 1
+      NUMBER_OF_FRAMES: 3
+      NUMBER_OF_BYTES : 180
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      DURATION        : 00:20:00.327000000
+  Stream #0:3(eng): Subtitle: subrip
+    Metadata:
+      BPS             : 63
+      NUMBER_OF_FRAMES: 830
+      NUMBER_OF_BYTES : 29213
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:01:45.081000000
+  Stream #0:4(eng): Subtitle: subrip
+    Metadata:
+      title           : SDH
+      BPS             : 77
+      NUMBER_OF_FRAMES: 1009
+      NUMBER_OF_BYTES : 36095
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:01:45.081000000
+  Stream #0:5(ara): Subtitle: subrip
+    Metadata:
+      BPS             : 87
+      NUMBER_OF_FRAMES: 853
+      NUMBER_OF_BYTES : 41074
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:6(bul): Subtitle: subrip
+    Metadata:
+      BPS             : 86
+      NUMBER_OF_FRAMES: 760
+      NUMBER_OF_BYTES : 40768
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:7(chi): Subtitle: subrip
+    Metadata:
+      title           : Chinese (Simplified)
+      BPS             : 51
+      NUMBER_OF_FRAMES: 854
+      NUMBER_OF_BYTES : 24389
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:8(chi): Subtitle: subrip
+    Metadata:
+      title           : Chinese (Traditional)
+      BPS             : 55
+      NUMBER_OF_FRAMES: 856
+      NUMBER_OF_BYTES : 26298
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:9(cze): Subtitle: subrip
+    Metadata:
+      BPS             : 56
+      NUMBER_OF_FRAMES: 814
+      NUMBER_OF_BYTES : 26561
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:10(dan): Subtitle: subrip
+    Metadata:
+      BPS             : 57
+      NUMBER_OF_FRAMES: 729
+      NUMBER_OF_BYTES : 27214
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:11(ger): Subtitle: subrip
+    Metadata:
+      BPS             : 59
+      NUMBER_OF_FRAMES: 850
+      NUMBER_OF_BYTES : 27852
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:02:33.213000000
+  Stream #0:12(gre): Subtitle: subrip
+    Metadata:
+      BPS             : 99
+      NUMBER_OF_FRAMES: 837
+      NUMBER_OF_BYTES : 46973
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:13(spa): Subtitle: subrip
+    Metadata:
+      title           : Spanish (Latin America)
+      BPS             : 59
+      NUMBER_OF_FRAMES: 843
+      NUMBER_OF_BYTES : 28132
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:14(spa): Subtitle: subrip
+    Metadata:
+      title           : Spanish (Spain)
+      BPS             : 60
+      NUMBER_OF_FRAMES: 842
+      NUMBER_OF_BYTES : 28577
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:15(est): Subtitle: subrip
+    Metadata:
+      BPS             : 56
+      NUMBER_OF_FRAMES: 806
+      NUMBER_OF_BYTES : 26415
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:16(fin): Subtitle: subrip
+    Metadata:
+      BPS             : 57
+      NUMBER_OF_FRAMES: 799
+      NUMBER_OF_BYTES : 26898
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:17(fre): Subtitle: subrip
+    Metadata:
+      title           : French (Canada)
+      BPS             : 53
+      NUMBER_OF_FRAMES: 879
+      NUMBER_OF_BYTES : 25062
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:02:33.213000000
+  Stream #0:18(fre): Subtitle: subrip
+    Metadata:
+      title           : French (France)
+      BPS             : 53
+      NUMBER_OF_FRAMES: 879
+      NUMBER_OF_BYTES : 25062
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:02:33.213000000
+  Stream #0:19(heb): Subtitle: subrip
+    Metadata:
+      BPS             : 84
+      NUMBER_OF_FRAMES: 853
+      NUMBER_OF_BYTES : 39890
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:20(hin): Subtitle: subrip
+    Metadata:
+      BPS             : 157
+      NUMBER_OF_FRAMES: 854
+      NUMBER_OF_BYTES : 73965
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:21(hun): Subtitle: subrip
+    Metadata:
+      BPS             : 57
+      NUMBER_OF_FRAMES: 846
+      NUMBER_OF_BYTES : 27299
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:22(ind): Subtitle: subrip
+    Metadata:
+      BPS             : 62
+      NUMBER_OF_FRAMES: 847
+      NUMBER_OF_BYTES : 29294
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:23(ita): Subtitle: subrip
+    Metadata:
+      BPS             : 60
+      NUMBER_OF_FRAMES: 828
+      NUMBER_OF_BYTES : 28207
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:02:59.322000000
+  Stream #0:24(jpn): Subtitle: subrip
+    Metadata:
+      BPS             : 52
+      NUMBER_OF_FRAMES: 929
+      NUMBER_OF_BYTES : 24856
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:12.794000000
+  Stream #0:25(kor): Subtitle: subrip
+    Metadata:
+      BPS             : 63
+      NUMBER_OF_FRAMES: 856
+      NUMBER_OF_BYTES : 29710
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:26(lit): Subtitle: subrip
+    Metadata:
+      BPS             : 61
+      NUMBER_OF_FRAMES: 837
+      NUMBER_OF_BYTES : 29076
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:27(lav): Subtitle: subrip
+    Metadata:
+      BPS             : 60
+      NUMBER_OF_FRAMES: 827
+      NUMBER_OF_BYTES : 28719
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:28(may): Subtitle: subrip
+    Metadata:
+      BPS             : 61
+      NUMBER_OF_FRAMES: 847
+      NUMBER_OF_BYTES : 28957
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:29(dut): Subtitle: subrip
+    Metadata:
+      BPS             : 50
+      NUMBER_OF_FRAMES: 677
+      NUMBER_OF_BYTES : 23795
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:30(nor): Subtitle: subrip
+    Metadata:
+      BPS             : 56
+      NUMBER_OF_FRAMES: 709
+      NUMBER_OF_BYTES : 26379
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:31(pol): Subtitle: subrip
+    Metadata:
+      BPS             : 55
+      NUMBER_OF_FRAMES: 815
+      NUMBER_OF_BYTES : 26014
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:32(por): Subtitle: subrip
+    Metadata:
+      title           : Portuguese
+      BPS             : 57
+      NUMBER_OF_FRAMES: 836
+      NUMBER_OF_BYTES : 26911
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:33(por): Subtitle: subrip
+    Metadata:
+      title           : Portuguese (Brazil)
+      BPS             : 57
+      NUMBER_OF_FRAMES: 822
+      NUMBER_OF_BYTES : 26930
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:34(rus): Subtitle: subrip
+    Metadata:
+      BPS             : 98
+      NUMBER_OF_FRAMES: 852
+      NUMBER_OF_BYTES : 45939
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:02:29.709000000
+  Stream #0:35(slo): Subtitle: subrip
+    Metadata:
+      BPS             : 53
+      NUMBER_OF_FRAMES: 841
+      NUMBER_OF_BYTES : 25302
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:36(slv): Subtitle: subrip
+    Metadata:
+      BPS             : 51
+      NUMBER_OF_FRAMES: 769
+      NUMBER_OF_BYTES : 24072
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:37(swe): Subtitle: subrip
+    Metadata:
+      BPS             : 59
+      NUMBER_OF_FRAMES: 765
+      NUMBER_OF_BYTES : 28036
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:38(tam): Subtitle: subrip
+    Metadata:
+      BPS             : 181
+      NUMBER_OF_FRAMES: 854
+      NUMBER_OF_BYTES : 85460
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:39(tel): Subtitle: subrip
+    Metadata:
+      BPS             : 152
+      NUMBER_OF_FRAMES: 854
+      NUMBER_OF_BYTES : 71580
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:40(tha): Subtitle: subrip
+    Metadata:
+      BPS             : 127
+      NUMBER_OF_FRAMES: 855
+      NUMBER_OF_BYTES : 59838
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:41(tur): Subtitle: subrip
+    Metadata:
+      BPS             : 58
+      NUMBER_OF_FRAMES: 838
+      NUMBER_OF_BYTES : 27592
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:42(ukr): Subtitle: subrip
+    Metadata:
+      BPS             : 91
+      NUMBER_OF_FRAMES: 854
+      NUMBER_OF_BYTES : 43062
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:43(vie): Subtitle: subrip
+    Metadata:
+      BPS             : 78
+      NUMBER_OF_FRAMES: 851
+      NUMBER_OF_BYTES : 37018
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+  Stream #0:44(chi): Subtitle: subrip
+    Metadata:
+      title           : Cantonese (Traditional)
+      BPS             : 53
+      NUMBER_OF_FRAMES: 855
+      NUMBER_OF_BYTES : 24966
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:06.746000000
+Stream mapping:
+  Stream #0:0 -> #0:0 (h264 (native) -> hevc (libx265))
+  Stream #0:1 -> #0:1 (copy)
+Press [q] to stop, [?] for help
+x265 [info]: HEVC encoder version 3.5+1-f0c1022b6
+x265 [info]: build info [Linux][GCC 11.2.0][64 bit] 8bit+10bit+12bit
+x265 [info]: using cpu capabilities: MMX2 SSE2Fast SSSE3 SSE4.2 AVX
+x265 [info]: Main profile, Level-3 (Main tier)
+x265 [info]: Thread pool created using 4 threads
+x265 [info]: Slices                              : 1
+x265 [info]: frame threads / pool features       : 2 / wpp(8 rows)
+x265 [warning]: Source height < 720p; disabling lookahead-slices
+x265 [info]: Coding QT: max CU size, min CU size : 64 / 8
+x265 [info]: Residual QT: max TU size, max depth : 32 / 1 inter / 1 intra
+x265 [info]: ME / range / subpel / merge         : hex / 57 / 2 / 3
+x265 [info]: Keyframe min / max / scenecut / bias  : 23 / 250 / 40 / 5.00 
+x265 [info]: Lookahead / bframes / badapt        : 20 / 4 / 2
+x265 [info]: b-pyramid / weightp / weightb       : 1 / 1 / 0
+x265 [info]: References / ref-limit  cu / depth  : 3 / off / on
+x265 [info]: AQ: mode / str / qg-size / cu-tree  : 2 / 1.0 / 32 / 1
+x265 [info]: Rate Control / qCompress            : CRF-28.0 / 0.60
+x265 [info]: tools: rd=3 psy-rd=2.00 early-skip rskip mode=1 signhide tmvp
+x265 [info]: tools: b-intra strong-intra-smoothing deblock sao
+Output #0, mp4, to '/home/sayang/Downloads/Tor/Ted.Lasso.S03E06.720p.ATVP.WEBRip.x264-GalaxyTV.mp4':
+  Metadata:
+    title           : Ted.Lasso.S03E06.720p.ATVP.WEBRip.x264-GalaxyTV
+    COMMENT         : GalaxyTV - small excellence!
+    encoder         : Lavf60.3.100
+  Chapters:
+    Chapter #0:0: start 0.000000, end 375.750000
+      Metadata:
+        title           : Chapter 1
+    Chapter #0:1: start 375.750000, end 397.750000
+      Metadata:
+        title           : Intro
+    Chapter #0:2: start 397.750000, end 3793.798000
+      Metadata:
+        title           : Chapter 2
+  Stream #0:0: Video: hevc (hev1 / 0x31766568), yuv420p(tv, bt709, progressive), 960x480 [SAR 1:1 DAR 2:1], q=2-31, 23.98 fps, 24k tbn (default)
+    Metadata:
+      title           : GalaxyTV - small excellence!
+      BPS             : 9985289
+      NUMBER_OF_FRAMES: 90960
+      NUMBER_OF_BYTES : 4735261300
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      DURATION        : 01:03:13.833000000
+      encoder         : Lavc60.3.100 libx265
+    Side data:
+      cpb: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A
+  Stream #0:1(eng): Audio: aac (LC) (mp4a / 0x6134706D), 48000 Hz, stereo, fltp (default) (original)
+    Metadata:
+      title           : GalaxyTV - small excellence!
+      BPS             : 767998
+      NUMBER_OF_FRAMES: 118556
+      NUMBER_OF_BYTES : 364204032
+      _STATISTICS_WRITING_APP: mkvmerge v74.0.0 ('You Oughta Know') 64-bit
+      _STATISTICS_TAGS: BPS DURATION NUMBER_OF_FRAMES NUMBER_OF_BYTES
+      ENCODER         : Lavc58.134.100 libfdk_aac
+      DURATION        : 01:03:13.835000000
+frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.19 bitrate=   4.5kbits/s speed=3.14x    
+frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:00.81 bitrate=   1.1kbits/s dup=1 drop=0 speed= 1.4x    
+frame=    0 fps=0.0 q=0.0 size=       0kB time=00:00:01.25 bitrate=   0.7kbits/s dup=1 drop=0 speed=0.598x    
+frame=    1 fps=0.3 q=31.1 size=       0kB time=00:00:01.34 bitrate=   0.6kbits/s dup=1 drop=0 speed=0.42x    
+frame=    4 fps=1.0 q=35.7 size=       0kB time=00:00:01.47 bitrate=   0.6kbits/s dup=1 drop=0 speed=0.365x    
+frame=    8 fps=1.7 q=33.7 size=       0kB time=00:00:01.64 bitrate=   0.5kbits/s dup=1 drop=0 speed=0.345x    
+frame=   12 fps=2.2 q=33.6 size=       0kB time=00:00:01.85 bitrate=   0.5kbits/s dup=1 drop=0 speed=0.347x    
+frame=   17 fps=2.8 q=35.7 size=       0kB time=00:00:02.04 bitrate=   0.4kbits/s dup=1 drop=0 speed=0.339x    
+frame=   24 fps=3.6 q=32.5 size=       0kB time=00:00:02.34 bitrate=   0.4kbits/s dup=1 drop=0 speed=0.352x    
+frame=   26 fps=3.6 q=35.7 size=       0kB time=00:00:02.43 bitrate=   0.4kbits/s dup=1 drop=0 speed=0.335x    
+frame=   29 fps=3.7 q=35.7 size=       0kB time=00:00:02.56 bitrate=   0.3kbits/s dup=1 drop=0 speed=0.328x    
+frame=   33 fps=4.0 q=32.5 size=       0kB time=00:00:02.73 bitrate=   0.3kbits/s dup=1 drop=0 speed=0.327x    
+frame=   36 fps=4.0 q=31.8 size=       0kB time=00:00:02.83 bitrate=   0.3kbits/s dup=1 drop=0 speed=0.319x    
+frame=   41 fps=4.3 q=33.7 size=       0kB time=00:00:03.05 bitrate=   0.3kbits/s dup=1 drop=0 speed=0.318x    
+frame=   46 fps=4.5 q=33.6 size=       0kB time=00:00:03.26 bitrate=   0.3kbits/s dup=1 drop=0 speed=0.32x    
+frame=   48 fps=4.5 q=35.7 size=       0kB time=00:00:03.35 bitrate=   0.3kbits/s dup=1 drop=0 speed=0.311x    
+frame=   51 fps=4.4 q=35.7 size=       0kB time=00:00:03.47 bitrate=   0.3kbits/s dup=1 drop=0 speed= 0.3x    
+frame=   56 fps=4.6 q=35.7 size=       0kB time=00:00:03.64 bitrate=   0.2kbits/s dup=1 drop=0 speed= 0.3x    
+frame=   59 fps=4.6 q=33.7 size=       0kB time=00:00:03.79 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.299x    
+frame=   64 fps=4.8 q=33.7 size=       0kB time=00:00:04.01 bitrate=   0.2kbits/s dup=1 drop=0 speed= 0.3x    
+frame=   67 fps=4.8 q=35.7 size=       0kB time=00:00:04.13 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.295x    
+frame=   71 fps=4.8 q=32.5 size=       0kB time=00:00:04.31 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.294x    
+frame=   77 fps=5.1 q=33.7 size=       0kB time=00:00:04.56 bitrate=   0.2kbits/s dup=1 drop=0 speed= 0.3x    
+frame=   82 fps=5.2 q=33.7 size=       0kB time=00:00:04.75 bitrate=   0.2kbits/s dup=1 drop=0 speed= 0.3x    
+frame=   86 fps=5.3 q=35.7 size=       0kB time=00:00:04.92 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.301x    
+frame=   91 fps=5.3 q=35.7 size=       0kB time=00:00:05.14 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.302x    
+frame=   95 fps=5.4 q=35.7 size=       0kB time=00:00:05.31 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.301x    
+frame=  101 fps=5.5 q=35.7 size=       0kB time=00:00:05.56 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.306x    
+frame=  106 fps=5.6 q=32.7 size=       0kB time=00:00:05.76 bitrate=   0.2kbits/s dup=1 drop=0 speed=0.307x    
+frame=  112 fps=5.7 q=35.7 size=       0kB time=00:00:06.01 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.307x    
+frame=  118 fps=5.9 q=35.3 size=       0kB time=00:00:06.27 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.312x    
+frame=  122 fps=5.9 q=35.7 size=       0kB time=00:00:06.44 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.311x    
+frame=  129 fps=6.1 q=32.5 size=       0kB time=00:00:06.67 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.315x    
+frame=  131 fps=6.0 q=35.7 size=       0kB time=00:00:06.80 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.311x    
+frame=  137 fps=6.1 q=32.5 size=       0kB time=00:00:07.01 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.314x    
+frame=  139 fps=6.1 q=33.7 size=       0kB time=00:00:07.10 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.311x    
+frame=  142 fps=6.0 q=31.7 size=       0kB time=00:00:07.27 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.308x    
+frame=  147 fps=6.1 q=31.6 size=       0kB time=00:00:07.44 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.307x    
+frame=  151 fps=6.0 q=31.7 size=       0kB time=00:00:07.59 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.304x    
+frame=  153 fps=6.0 q=31.8 size=       0kB time=00:00:07.72 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.302x    
+frame=  157 fps=6.0 q=33.7 size=       0kB time=00:00:07.89 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.303x    
+frame=  162 fps=6.1 q=35.7 size=       0kB time=00:00:08.10 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.304x    
+frame=  168 fps=6.2 q=35.7 size=       0kB time=00:00:08.36 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.307x    
+frame=  173 fps=6.2 q=35.7 size=       0kB time=00:00:08.55 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.307x    
+frame=  180 fps=6.3 q=35.7 size=       0kB time=00:00:08.81 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.309x    
+frame=  184 fps=6.3 q=35.7 size=       0kB time=00:00:09.02 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.31x    
+frame=  188 fps=6.4 q=33.7 size=       0kB time=00:00:09.19 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.311x    
+frame=  193 fps=6.4 q=35.7 size=       0kB time=00:00:09.38 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.311x    
+frame=  200 fps=6.5 q=33.7 size=       0kB time=00:00:09.64 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.313x    
+frame=  203 fps=6.5 q=33.7 size=       0kB time=00:00:09.81 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.314x    
+frame=  209 fps=6.6 q=35.7 size=       0kB time=00:00:10.07 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.316x    
+frame=  213 fps=6.5 q=33.4 size=       0kB time=00:00:10.24 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.314x    
+frame=  217 fps=6.5 q=32.0 size=       0kB time=00:00:10.39 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.313x    
+frame=  219 fps=6.5 q=35.3 size=       0kB time=00:00:10.47 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.311x    
+frame=  224 fps=6.5 q=35.7 size=       0kB time=00:00:10.68 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.312x    
+frame=  230 fps=6.6 q=35.7 size=       0kB time=00:00:10.90 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.313x    
+frame=  237 fps=6.7 q=35.7 size=       0kB time=00:00:11.22 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.318x    
+frame=  242 fps=6.4 q=33.7 size=       0kB time=00:00:11.39 bitrate=   0.1kbits/s dup=1 drop=0 speed= 0.3x    
+frame=  243 fps=6.3 q=28.8 size=       0kB time=00:00:11.47 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.297x    
+frame=  246 fps=6.3 q=35.1 size=       0kB time=00:00:11.60 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.296x    
+frame=  248 fps=6.1 q=28.8 size=       0kB time=00:00:11.64 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.288x    
+frame=  249 fps=5.9 q=27.4 size=       0kB time=00:00:11.73 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.278x    
+frame=  250 fps=5.8 q=28.4 size=       0kB time=00:00:11.77 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.275x    
+frame=  251 fps=5.7 q=28.3 size=       0kB time=00:00:11.81 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.269x    
+frame=  252 fps=5.7 q=30.3 size=       0kB time=00:00:11.86 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.266x    
+frame=  255 fps=5.5 q=28.3 size=       0kB time=00:00:11.99 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.259x    
+frame=  256 fps=5.5 q=31.1 size=       0kB time=00:00:12.03 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.257x    
+frame=  259 fps=5.4 q=27.8 size=       0kB time=00:00:12.13 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.251x    
+frame=  261 fps=5.3 q=33.9 size=       0kB time=00:00:12.22 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.249x    
+frame=  263 fps=5.3 q=27.3 size=       0kB time=00:00:12.31 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.247x    
+frame=  266 fps=5.2 q=26.9 size=       0kB time=00:00:12.39 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.243x    
+frame=  266 fps=5.2 q=26.8 size=       0kB time=00:00:12.43 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.242x    
+frame=  267 fps=5.1 q=26.3 size=       0kB time=00:00:12.48 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.238x    
+frame=  269 fps=5.1 q=27.1 size=       0kB time=00:00:12.56 bitrate=   0.1kbits/s dup=1 drop=0 speed=0.236x    
+frame=  271 fps=5.0 q=34.6 size=     256kB time=00:00:12.65 bitrate= 165.8kbits/s dup=1 drop=0 speed=0.235x    
+frame=  274 fps=5.0 q=26.9 size=     256kB time=00:00:12.73 bitrate= 164.7kbits/s dup=1 drop=0 speed=0.232x    
+frame=  275 fps=5.0 q=34.6 size=     256kB time=00:00:12.82 bitrate= 163.6kbits/s dup=1 drop=0 speed=0.232x    
+frame=  277 fps=4.9 q=26.8 size=     256kB time=00:00:12.90 bitrate= 162.5kbits/s dup=1 drop=0 speed=0.23x    
+frame=  279 fps=4.9 q=34.9 size=     256kB time=00:00:12.99 bitrate= 161.5kbits/s dup=1 drop=0 speed=0.228x    
+frame=  281 fps=4.9 q=27.3 size=     256kB time=00:00:13.05 bitrate= 160.7kbits/s dup=1 drop=0 speed=0.226x    
+frame=  283 fps=4.8 q=35.1 size=     256kB time=00:00:13.14 bitrate= 159.6kbits/s dup=1 drop=0 speed=0.225x    
+frame=  285 fps=4.8 q=27.2 size=     256kB time=00:00:13.22 bitrate= 158.6kbits/s dup=1 drop=0 speed=0.223x    
+frame=  289 fps=4.8 q=27.0 size=     256kB time=00:00:13.39 bitrate= 156.6kbits/s dup=1 drop=0 speed=0.222x    
+frame=  291 fps=4.8 q=35.1 size=     256kB time=00:00:13.48 bitrate= 155.6kbits/s dup=1 drop=0 speed=0.221x    
+frame=  294 fps=4.8 q=32.6 size=     256kB time=00:00:13.61 bitrate= 154.1kbits/s dup=1 drop=0 speed=0.22x    
+frame=  297 fps=4.8 q=28.6 size=     256kB time=00:00:13.73 bitrate= 152.7kbits/s dup=1 drop=0 speed=0.22x    
+frame=  299 fps=4.7 q=35.0 size=     256kB time=00:00:13.82 bitrate= 151.8kbits/s dup=1 drop=0 speed=0.219x    
+frame=  301 fps=4.7 q=31.0 size=     256kB time=00:00:13.91 bitrate= 150.8kbits/s dup=1 drop=0 speed=0.218x    
+frame=  304 fps=4.7 q=35.3 size=     256kB time=00:00:13.97 bitrate= 150.1kbits/s dup=1 drop=0 speed=0.216x    
+frame=  307 fps=4.6 q=25.8 size=     256kB time=00:00:14.14 bitrate= 148.3kbits/s dup=1 drop=0 speed=0.21x    
+frame=  308 fps=4.5 q=27.5 size=     256kB time=00:00:14.18 bitrate= 147.9kbits/s dup=1 drop=0 speed=0.209x    
+frame=  310 fps=4.5 q=35.1 size=     256kB time=00:00:14.27 bitrate= 147.0kbits/s dup=1 drop=0 speed=0.208x    
+frame=  312 fps=4.5 q=27.4 size=     256kB time=00:00:14.35 bitrate= 146.1kbits/s dup=1 drop=0 speed=0.207x    
+frame=  315 fps=4.5 q=34.9 size=     256kB time=00:00:14.48 bitrate= 144.8kbits/s dup=1 drop=0 speed=0.206x    
+frame=  316 fps=4.5 q=27.3 size=     256kB time=00:00:14.52 bitrate= 144.4kbits/s dup=1 drop=0 speed=0.205x    
+frame=  318 fps=4.4 q=35.0 size=     256kB time=00:00:14.61 bitrate= 143.6kbits/s dup=1 drop=0 speed=0.204x    
+frame=  320 fps=4.4 q=27.4 size=     256kB time=00:00:14.69 bitrate= 142.7kbits/s dup=1 drop=0 speed=0.203x    
+frame=  322 fps=4.4 q=35.4 size=     256kB time=00:00:14.78 bitrate= 141.9kbits/s dup=1 drop=0 speed=0.203x    
+frame=  324 fps=4.4 q=27.5 size=     256kB time=00:00:14.87 bitrate= 141.1kbits/s dup=1 drop=0 speed=0.201x    
+frame=  327 fps=4.4 q=34.9 size=     256kB time=00:00:14.93 bitrate= 140.5kbits/s dup=1 drop=0 speed= 0.2x    
+frame=  329 fps=4.3 q=27.7 size=     256kB time=00:00:15.01 bitrate= 139.7kbits/s dup=1 drop=0 speed=0.198x    
+frame=  333 fps=4.3 q=27.8 size=     512kB time=00:00:15.19 bitrate= 276.2kbits/s dup=1 drop=0 speed=0.197x    
+frame=  334 fps=4.3 q=35.1 size=     512kB time=00:00:15.27 bitrate= 274.6kbits/s dup=1 drop=0 speed=0.196x    
+frame=  337 fps=4.3 q=28.1 size=     512kB time=00:00:15.36 bitrate= 273.1kbits/s dup=1 drop=0 speed=0.195x    
+frame=  338 fps=4.3 q=34.8 size=     512kB time=00:00:15.44 bitrate= 271.6kbits/s dup=1 drop=0 speed=0.195x    
+frame=  340 fps=4.2 q=28.0 size=     512kB time=00:00:15.53 bitrate= 270.1kbits/s dup=1 drop=0 speed=0.193x    
+frame=  341 fps=4.2 q=31.7 size=     512kB time=00:00:15.57 bitrate= 269.4kbits/s dup=1 drop=0 speed=0.193x    
+frame=  345 fps=4.2 q=27.9 size=     512kB time=00:00:15.70 bitrate= 267.2kbits/s dup=1 drop=0 speed=0.191x    
+frame=  347 fps=4.2 q=34.2 size=     512kB time=00:00:15.78 bitrate= 265.7kbits/s dup=1 drop=0 speed=0.19x    
+frame=  349 fps=4.1 q=28.0 size=     512kB time=00:00:15.85 bitrate= 264.7kbits/s dup=1 drop=0 speed=0.188x    
+frame=  378 fps=3.7 q=34.0 Lsize=     708kB time=00:00:15.87 bitrate= 365.2kbits/s dup=1 drop=0 speed=0.155x    
+video:501kB audio:187kB subtitle:0kB other streams:0kB global headers:2kB muxing overhead: 2.802858%
+x265 [info]: frame I:      3, Avg QP:28.12  kb/s: 1920.51 
+x265 [info]: frame P:    118, Avg QP:30.97  kb/s: 573.68  
+x265 [info]: frame B:    257, Avg QP:34.60  kb/s: 96.30   
+x265 [info]: Weighted P-Frames: Y:30.5% UV:5.9%
+x265 [info]: consecutive B-frames: 27.3% 8.3% 10.7% 32.2% 21.5% 
+
+encoded 378 frames in 102.06s (3.70 fps), 259.80 kb/s, Avg QP:33.41
+Exiting normally, received signal 15.

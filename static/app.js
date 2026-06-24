@@ -424,8 +424,49 @@ function renderExplorerList(items) {
             <span class="file-name">${item.name}</span>
             <span class="file-size">${sizeStr}</span>
         `;
+        
+        // Create the Rename button programmatically to avoid HTML quotes escaping issues
+        const renameBtn = document.createElement('button');
+        renameBtn.className = 'btn btn-sm btn-rename';
+        renameBtn.innerHTML = '✏️ Rename';
+        renameBtn.style.padding = '2px 8px';
+        renameBtn.style.fontSize = '0.8em';
+        renameBtn.style.marginLeft = '10px';
+        renameBtn.style.cursor = 'pointer';
+        
+        renameBtn.onclick = () => renameExplorerItem(item.path, item.name);
+        
+        div.appendChild(renameBtn);
         list.appendChild(div);
     });
+}
+
+async function renameExplorerItem(path, oldName) {
+    const newName = prompt(`Enter new name for "${oldName}":`, oldName);
+    if (!newName || newName.trim() === "" || newName === oldName) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/fs/rename', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source_path: path,
+                new_name: newName.trim()
+            })
+        });
+        
+        const data = await response.json();
+        if (response.ok) {
+            openExplorer(); // Refresh directory listing
+        } else {
+            alert(`Error: ${data.detail}`);
+        }
+    } catch (error) {
+        console.error("Rename failed:", error);
+        alert("Failed to connect to the Pareo engine.");
+    }
 }
 
 // UPDATED: Dynamically shape-shift the UI and swap datalists

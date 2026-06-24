@@ -59,6 +59,10 @@ class SwitchboardRequest(BaseModel):
     category: str
     button_name: str
 
+class RenameRequest(BaseModel):
+    source_path: str
+    new_name: str
+
 @app.post("/api/execute/ls")
 async def execute_ls():
     """Queues the 'ls -ltr' command."""
@@ -178,6 +182,25 @@ def list_directory(target_path: str = "/"):
         return {"target_path": str(p.absolute()), "items": items}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/fs/rename")
+def rename_fs_item(request: RenameRequest):
+    """Renames a local file or folder immediately using os.rename."""
+    src = Path(request.source_path)
+    if not src.exists():
+        raise HTTPException(status_code=404, detail="Source file or folder not found.")
+        
+    # Construct the destination path in the same parent directory
+    dest = src.parent / request.new_name
+    
+    if dest.exists():
+        raise HTTPException(status_code=400, detail="A file or folder with the new name already exists.")
+        
+    try:
+        os.rename(str(src), str(dest))
+        return {"success": True, "message": f"Renamed to {request.new_name}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to rename: {str(e)}")
 
 @app.post("/api/execute/fs")
 async def execute_fs_action(request: FsRequest):

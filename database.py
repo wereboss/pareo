@@ -13,6 +13,7 @@ def get_conn():
 def init_db():
     """Creates the schema if it doesn't exist."""
     with get_conn() as conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 task_id TEXT PRIMARY KEY,
@@ -33,6 +34,13 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
+        # Ensure pid column exists for detached process monitoring
+        try:
+            conn.execute("ALTER TABLE tasks ADD COLUMN pid INTEGER")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
         # Migrate NULL queue_names to their correct legacy mappings
         conn.execute("""
             UPDATE tasks
@@ -49,7 +57,7 @@ def init_db():
 def insert_task(task_id: str, command: str, status: str, start_time: str, queue_name: str = "default"):
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO tasks (task_id, command, status, output, start_time, end_time, queue_name) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO tasks (task_id, command, status, output, start_time, end_time, queue_name, pid) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)",
             (task_id, command, status, "", start_time, "", queue_name)
         )
         conn.commit()
@@ -60,6 +68,11 @@ def update_task_status(task_id: str, status: str, end_time: str = ""):
             conn.execute("UPDATE tasks SET status = ?, end_time = ? WHERE task_id = ?", (status, end_time, task_id))
         else:
             conn.execute("UPDATE tasks SET status = ? WHERE task_id = ?", (status, task_id))
+        conn.commit()
+
+def update_task_pid(task_id: str, pid: int):
+    with get_conn() as conn:
+        conn.execute("UPDATE tasks SET pid = ? WHERE task_id = ?", (pid, task_id))
         conn.commit()
 
 def append_task_output(task_id: str, chunk: str):

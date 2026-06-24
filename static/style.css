@@ -477,7 +477,8 @@ table td code {
 
 /* 1. Force ALL standard buttons (except switchboard) to adopt the theme */
 .card button:not(.btn-switch),
-.modal-content button {
+.modal-content button,
+.modal-card button {
     background: var(--base03) !important;
     color: var(--cyan) !important;
     border: 1px solid var(--cyan) !important;
@@ -486,21 +487,32 @@ table td code {
 }
 
 .card button:not(.btn-switch):hover:not(:disabled),
-.modal-content button:hover:not(:disabled) {
+.modal-content button:hover:not(:disabled),
+.modal-card button:hover:not(:disabled) {
     background: var(--cyan) !important;
     color: var(--base03) !important;
 }
 
 /* 2. Overhaul the Modals */
-.modal-content {
+.modal-content,
+.modal-card {
     background: var(--base02) !important;
     border: 1px solid var(--cyan) !important; /* Cyan border makes the modal pop from the background */
     box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
 }
 
 .modal-content div[style*="color: #333"], 
-.modal-content div[style*="color: #666"] {
+.modal-content div[style*="color: #666"],
+.modal-card div[style*="color"],
+.modal-card span[style*="color"] {
     color: var(--base0) !important; /* Catch any inline grey text */
+}
+
+/* Modal header and footer fixes */
+.modal-header,
+.modal-footer {
+    background: var(--base02) !important;
+    border-color: var(--base01) !important;
 }
 
 /* 3. The File Explorer Internal List */
@@ -541,13 +553,17 @@ table td code {
 
 /* 2. Catch stray inline grey styles in footers or loading text */
 .modal-content div[style*="color"], 
-.modal-content span[style*="color"] {
+.modal-content span[style*="color"],
+.modal-card div[style*="color"],
+.modal-card span[style*="color"] {
     color: var(--base0) !important;
 }
 
 /* 3. Isolate the Close (X) Buttons */
 /* This clever selector targets ONLY buttons whose onclick attribute contains the word "close" */
-.modal-content button[onclick*="close"] {
+.modal-content button[onclick*="close"],
+.modal-card button[onclick*="close"],
+.modal-card .close-btn {
     background: transparent !important;
     border: none !important;
     color: var(--base01) !important;
@@ -558,7 +574,9 @@ table td code {
 }
 
 /* Give the X button a slick Solarized red highlight when hovered */
-.modal-content button[onclick*="close"]:hover {
+.modal-content button[onclick*="close"]:hover,
+.modal-card button[onclick*="close"]:hover,
+.modal-card .close-btn:hover {
     background: transparent !important;
     color: var(--red) !important; 
     transform: scale(1.1);

@@ -42,8 +42,35 @@ def resolve_queue_from_command(command: str) -> str:
 
 def recover_tasks():
     """Runs on server boot to handle orphaned tasks and requeue pending ones in their correct queues."""
-    database.mark_running_as_failed()
+    import os
+    from datetime import datetime
     
+    # 1. Fetch running tasks and verify if they are still alive
+    with database.get_conn() as conn:
+        cur = conn.execute("SELECT * FROM tasks WHERE status = 'Running'")
+        running_tasks = [dict(row) for row in cur.fetchall()]
+        
+    for rt in running_tasks:
+        task_id = rt["task_id"]
+        pid = rt.get("pid")
+        still_running = False
+        if pid:
+            try:
+                # Signal 0 checks process existence without killing it
+                os.kill(pid, 0)
+                still_running = True
+            except (ProcessLookupError, PermissionError):
+                pass
+        
+        if still_running:
+            print(f"[*] Task {task_id[:8]} (PID {pid}) is still running in the background. Letting it finish.")
+        else:
+            print(f"[*] Task {task_id[:8]} (PID {pid}) is no longer active. Marking as Failed (Interrupted).")
+            end_time = datetime.now().isoformat()
+            database.update_task_status(task_id, "Failed (Interrupted)", end_time)
+            database.append_task_output(task_id, "\n[Task interrupted due to server reboot]")
+            
+    # 2. Recover pending tasks
     pending = database.get_pending_tasks()
     for pt in pending:
         q_name = pt.get("queue_name")
@@ -122,68 +149,74 @@ async def run_command(task_id: str, command: str):
         print(f"[*] Skipping task {task_id[:8]} as it was Cancelled while pending.")
         return
 
-    # NEW: Capture exact time the worker picked it up
+    # Capture exact time the worker picked it up
     actual_start_time = datetime.now().isoformat()
     database.update_task_start_time(task_id, actual_start_time)
-
-    database.update_task_status(task_id, "Running")
     
     try:
-        process = await asyncio.create_subprocess_shell(
-            command,
+        # Spawn the detached task_runner.py process
+        # We run it with start_new_session=True so it forms a new process group.
+        # This keeps the task execution completely isolated from Pareo.
+        cmd_args = [
+            "python3", "task_runner.py",
+            "--task-id", task_id,
+            "--command", command
+        ]
+        
+        process = await asyncio.create_subprocess_exec(
+            *cmd_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=True
         )
+        
         running_processes[task_id] = process
         
+        # Read the stdout and stderr streams of the task_runner itself to print in server console/logs
+        # task_runner.py writes the task output directly to database/log files.
+        async def _log_runner_output(stream):
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                decoded = line.decode('utf-8', errors='replace').strip()
+                if decoded:
+                    print(f"[Runner {task_id[:8]}] {decoded}")
+
         await asyncio.gather(
-            _read_stream(process.stdout, task_id),
-            _read_stream(process.stderr, task_id)
+            _log_runner_output(process.stdout),
+            _log_runner_output(process.stderr)
         )
         
-        return_code = await process.wait()
-        end_time = datetime.now().isoformat()
-        
-        # Check if task was cancelled during execution
-        current_task = database.get_task(task_id)
-        if current_task and current_task["status"] == "Cancelled":
-            return
-            
-        if return_code == 0:
-            database.update_task_status(task_id, "Completed", end_time)
-        else:
-            database.update_task_status(task_id, f"Failed (Code: {return_code})", end_time)
+        await process.wait()
             
     except Exception as e:
         end_time = datetime.now().isoformat()
-        current_task = database.get_task(task_id)
-        if current_task and current_task["status"] == "Cancelled":
-            return
-        database.append_task_output(task_id, f"\nExecution Error: {str(e)}")
-        database.update_task_status(task_id, "Failed (Exception)", end_time)
+        database.append_task_output(task_id, f"\nFailed to spawn task runner: {str(e)}")
+        database.update_task_status(task_id, "Failed (Launcher Exception)", end_time)
     finally:
         running_processes.pop(task_id, None)
 
 async def cancel_task(task_id: str) -> bool:
-    """Cancels a task. If running, terminates the subprocess group. If pending, updates status to Cancelled."""
+    """Cancels a task. If running, terminates the detached subprocess group. If pending, updates status to Cancelled."""
     task = database.get_task(task_id)
     if not task:
         raise ValueError("Task not found.")
         
     if task["status"] == "Running":
-        process = running_processes.get(task_id)
-        if process:
+        pid = task.get("pid")
+        if pid:
             try:
                 import os
                 import signal
-                # Terminate the entire process group (shell + child processes)
-                os.killpg(process.pid, signal.SIGTERM)
+                # Terminate the entire process group of the task_runner
+                os.killpg(pid, signal.SIGTERM)
             except ProcessLookupError:
                 pass
             except Exception as e:
-                print(f"[!] Error terminating process group for task {task_id}: {str(e)}")
+                print(f"[!] Error terminating process group {pid} for task {task_id}: {str(e)}")
         
+        # In case the runner did not update the DB yet (or was SIGKILLed)
         end_time = datetime.now().isoformat()
         database.update_task_status(task_id, "Cancelled", end_time)
         database.append_task_output(task_id, "\n[Task Cancelled by User]")

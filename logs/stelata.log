@@ -1,0 +1,122 @@
+Requirement already satisfied: fastapi in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 1)) (0.138.0)
+Requirement already satisfied: uvicorn in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 2)) (0.49.0)
+Requirement already satisfied: aiofiles in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 3)) (25.1.0)
+Requirement already satisfied: httpx in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 4)) (0.28.1)
+Requirement already satisfied: pytest in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 5)) (9.1.1)
+Requirement already satisfied: starlette>=0.46.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (1.3.1)
+Requirement already satisfied: pydantic>=2.9.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (2.13.4)
+Requirement already satisfied: typing-extensions>=4.8.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (0.4.2)
+Requirement already satisfied: annotated-doc>=0.0.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (0.0.4)
+Requirement already satisfied: click>=7.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from uvicorn->-r requirements.txt (line 2)) (8.4.1)
+Requirement already satisfied: h11>=0.8 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from uvicorn->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: anyio in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (4.14.0)
+Requirement already satisfied: certifi in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (2026.6.17)
+Requirement already satisfied: httpcore==1.* in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (1.0.9)
+Requirement already satisfied: idna in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (3.18)
+Requirement already satisfied: iniconfig>=1.0.1 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (2.3.0)
+Requirement already satisfied: packaging>=22 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (26.2)
+Requirement already satisfied: pluggy<2,>=1.5 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (2.20.0)
+Requirement already satisfied: annotated-types>=0.6.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pydantic>=2.9.0->fastapi->-r requirements.txt (line 1)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.46.4 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pydantic>=2.9.0->fastapi->-r requirements.txt (line 1)) (2.46.4)
+INFO:     Will watch for changes in these directories: ['/home/sayang/Programs/stelata']
+INFO:     Uvicorn running on http://0.0.0.0:9027 (Press CTRL+C to quit)
+INFO:     Started reloader process [49892] using StatReload
+INFO:     Started server process [50423]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     192.168.0.129:49807 - "GET / HTTP/1.1" 307 Temporary Redirect
+INFO:     192.168.0.129:49840 - "GET / HTTP/1.1" 307 Temporary Redirect
+INFO:     192.168.0.129:49840 - "GET /static/index.html HTTP/1.1" 200 OK
+INFO:     192.168.0.129:49841 - "GET /static/styles.css?v=1.6 HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49840 - "GET /static/app.js?v=1.6 HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:49849 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [50423]
+INFO:     Stopping reloader process [49892]
+Requirement already satisfied: fastapi in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 1)) (0.138.0)
+Requirement already satisfied: uvicorn in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 2)) (0.49.0)
+Requirement already satisfied: aiofiles in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 3)) (25.1.0)
+Requirement already satisfied: httpx in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 4)) (0.28.1)
+Requirement already satisfied: pytest in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 5)) (9.1.1)
+Requirement already satisfied: starlette>=0.46.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (1.3.1)
+Requirement already satisfied: pydantic>=2.9.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (2.13.4)
+Requirement already satisfied: typing-extensions>=4.8.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (0.4.2)
+Requirement already satisfied: annotated-doc>=0.0.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (0.0.4)
+Requirement already satisfied: click>=7.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from uvicorn->-r requirements.txt (line 2)) (8.4.1)
+Requirement already satisfied: h11>=0.8 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from uvicorn->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: anyio in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (4.14.0)
+Requirement already satisfied: certifi in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (2026.6.17)
+Requirement already satisfied: httpcore==1.* in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (1.0.9)
+Requirement already satisfied: idna in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (3.18)
+Requirement already satisfied: iniconfig>=1.0.1 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (2.3.0)
+Requirement already satisfied: packaging>=22 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (26.2)
+Requirement already satisfied: pluggy<2,>=1.5 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (2.20.0)
+Requirement already satisfied: annotated-types>=0.6.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pydantic>=2.9.0->fastapi->-r requirements.txt (line 1)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.46.4 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pydantic>=2.9.0->fastapi->-r requirements.txt (line 1)) (2.46.4)
+INFO:     Will watch for changes in these directories: ['/home/sayang/Programs/stelata']
+INFO:     Uvicorn running on http://0.0.0.0:9027 (Press CTRL+C to quit)
+INFO:     Started reloader process [155652] using StatReload
+INFO:     Started server process [155906]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     192.168.0.129:50948 - "GET / HTTP/1.1" 307 Temporary Redirect
+INFO:     192.168.0.129:50948 - "GET /static/index.html HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:50947 - "GET /static/app.js?v=1.6 HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:50948 - "GET /static/styles.css?v=1.6 HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:50948 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     192.168.0.233:53428 - "GET / HTTP/1.1" 307 Temporary Redirect
+INFO:     192.168.0.233:53428 - "GET /static/index.html HTTP/1.1" 200 OK
+INFO:     192.168.0.233:53428 - "GET /static/styles.css?v=1.6 HTTP/1.1" 200 OK
+INFO:     192.168.0.233:53430 - "GET /static/app.js?v=1.6 HTTP/1.1" 200 OK
+INFO:     192.168.0.233:53430 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     192.168.0.233:53448 - "GET /static/index.html HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.233:53454 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [155906]
+INFO:     Stopping reloader process [155652]
+Requirement already satisfied: fastapi in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 1)) (0.138.0)
+Requirement already satisfied: uvicorn in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 2)) (0.49.0)
+Requirement already satisfied: aiofiles in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 3)) (25.1.0)
+Requirement already satisfied: httpx in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 4)) (0.28.1)
+Requirement already satisfied: pytest in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from -r requirements.txt (line 5)) (9.1.1)
+Requirement already satisfied: starlette>=0.46.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (1.3.1)
+Requirement already satisfied: pydantic>=2.9.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (2.13.4)
+Requirement already satisfied: typing-extensions>=4.8.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (0.4.2)
+Requirement already satisfied: annotated-doc>=0.0.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from fastapi->-r requirements.txt (line 1)) (0.0.4)
+Requirement already satisfied: click>=7.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from uvicorn->-r requirements.txt (line 2)) (8.4.1)
+Requirement already satisfied: h11>=0.8 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from uvicorn->-r requirements.txt (line 2)) (0.16.0)
+Requirement already satisfied: anyio in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (4.14.0)
+Requirement already satisfied: certifi in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (2026.6.17)
+Requirement already satisfied: httpcore==1.* in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (1.0.9)
+Requirement already satisfied: idna in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from httpx->-r requirements.txt (line 4)) (3.18)
+Requirement already satisfied: iniconfig>=1.0.1 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (2.3.0)
+Requirement already satisfied: packaging>=22 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (26.2)
+Requirement already satisfied: pluggy<2,>=1.5 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (1.6.0)
+Requirement already satisfied: pygments>=2.7.2 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pytest->-r requirements.txt (line 5)) (2.20.0)
+Requirement already satisfied: annotated-types>=0.6.0 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pydantic>=2.9.0->fastapi->-r requirements.txt (line 1)) (0.7.0)
+Requirement already satisfied: pydantic-core==2.46.4 in /home/sayang/Programs/agy-demo/.venv/lib/python3.11/site-packages (from pydantic>=2.9.0->fastapi->-r requirements.txt (line 1)) (2.46.4)
+INFO:     Will watch for changes in these directories: ['/home/sayang/Programs/stelata']
+INFO:     Uvicorn running on http://0.0.0.0:9027 (Press CTRL+C to quit)
+INFO:     Started reloader process [622698] using StatReload
+INFO:     Started server process [623185]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     192.168.0.129:53860 - "GET / HTTP/1.1" 307 Temporary Redirect
+INFO:     192.168.0.129:53860 - "GET /static/index.html HTTP/1.1" 200 OK
+INFO:     192.168.0.129:53859 - "GET /static/styles.css?v=1.6 HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:53860 - "GET /static/app.js?v=1.6 HTTP/1.1" 304 Not Modified
+INFO:     192.168.0.129:53860 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [623185]
+INFO:     Stopping reloader process [622698]
