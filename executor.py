@@ -260,6 +260,35 @@ async def worker(queue_name: str, queue: asyncio.Queue):
         print(f"[{queue_name.upper()} WORKER] Picked up task {task_id[:8]}")
         
         try:
+            # Check if there is another task in this queue that is already 'Running'
+            # (e.g. a task that survived reboot and is still running in the background)
+            while True:
+                running_tasks = []
+                with database.get_conn() as conn:
+                    cur = conn.execute(
+                        "SELECT task_id, pid FROM tasks WHERE queue_name = ? AND status = 'Running' AND task_id != ?",
+                        (queue_name, task_id)
+                    )
+                    running_tasks = [dict(row) for row in cur.fetchall()]
+                
+                still_active = False
+                for rt in running_tasks:
+                    pid = rt.get("pid")
+                    if pid:
+                        try:
+                            import os
+                            os.kill(pid, 0)
+                            still_active = True
+                            break
+                        except (ProcessLookupError, PermissionError):
+                            pass
+                
+                if not still_active:
+                    break
+                
+                # If there's an active running task, wait 2 seconds before checking again
+                await asyncio.sleep(2.0)
+
             # Execute the command
             await run_command(task_id, command)
             
@@ -270,7 +299,6 @@ async def worker(queue_name: str, queue: asyncio.Queue):
             
             # Attempt a last-resort fallback to mark it as failed so it doesn't get stuck Running
             try:
-                import database
                 from datetime import datetime
                 database.update_task_status(task_id, "Failed (Worker Exception)", datetime.now().isoformat())
             except Exception:
