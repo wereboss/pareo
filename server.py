@@ -54,6 +54,7 @@ class FsRequest(BaseModel):
     source_paths: List[str]
     destination_path: Optional[str] = ""
     remote_server: Optional[str] = ""  # NEW: Tracks the target server
+    source_server: Optional[str] = ""  # NEW: Tracks the source server
 
 class SwitchboardRequest(BaseModel):
     category: str
@@ -62,6 +63,7 @@ class SwitchboardRequest(BaseModel):
 class RenameRequest(BaseModel):
     source_path: str
     new_name: str
+    remote_server: Optional[str] = ""
 
 @app.post("/api/execute/ls")
 async def execute_ls():
@@ -157,9 +159,137 @@ def get_remotes_config():
     config = command_builder.load_config()
     return config.get("remote_servers", {})
 
+def list_remote_directory(remote_name: str, target_path: str):
+    import subprocess
+    import json
+    config = command_builder.load_config()
+    remotes = config.get("remote_servers", {})
+    if remote_name not in remotes:
+        raise HTTPException(status_code=400, detail=f"Remote server '{remote_name}' not configured.")
+        
+    rc = remotes[remote_name]
+    user = rc.get("user")
+    host = rc.get("host")
+    key_path = rc.get("key_path")
+    
+    # Python one-liner to execute on the remote machine
+    remote_python_code = (
+        "import os, json, sys\n"
+        "target = sys.argv[1] if len(sys.argv) > 1 else '/'\n"
+        "try:\n"
+        "    abs_target = os.path.abspath(target)\n"
+        "    items = []\n"
+        "    if os.path.exists(abs_target) and os.path.isdir(abs_target):\n"
+        "        for entry in os.scandir(abs_target):\n"
+        "            try:\n"
+        "                is_dir = entry.is_dir()\n"
+        "                size = entry.stat().st_size if not is_dir else 0\n"
+        "                items.append({'name': entry.name, 'path': entry.path, 'is_dir': is_dir, 'size': size})\n"
+        "            except Exception:\n"
+        "                pass\n"
+        "        items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))\n"
+        "        parent = os.path.dirname(abs_target)\n"
+        "        if parent == abs_target:\n"
+        "            parent = None\n"
+        "        print(json.dumps({'success': True, 'target_path': abs_target, 'parent_path': parent, 'items': items}))\n"
+        "    else:\n"
+        "        print(json.dumps({'success': False, 'error': 'Not a directory or does not exist'}))\n"
+        "except Exception as e:\n"
+        "    print(json.dumps({'success': False, 'error': str(e)}))\n"
+    )
+    
+    escaped_code = remote_python_code.replace('"', '\\"').replace('$', '\\$')
+    ssh_cmd = [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-i", key_path,
+        f"{user}@{host}",
+        f"python3 -c \"{escaped_code}\" \"{target_path}\""
+    ]
+    
+    try:
+        proc = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10.0)
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"SSH command failed: {proc.stderr}")
+            
+        result = json.loads(proc.stdout.strip())
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error", "Unknown remote error"))
+            
+        return result
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Connection to remote server timed out.")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=500, detail=f"Invalid response from remote server: {proc.stdout} {proc.stderr}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def rename_remote_item(remote_name: str, source_path: str, new_name: str):
+    import subprocess
+    config = command_builder.load_config()
+    remotes = config.get("remote_servers", {})
+    if remote_name not in remotes:
+        raise HTTPException(status_code=400, detail=f"Remote server '{remote_name}' not configured.")
+        
+    rc = remotes[remote_name]
+    user = rc.get("user")
+    host = rc.get("host")
+    key_path = rc.get("key_path")
+    
+    remote_code = (
+        "import os, sys\n"
+        "src = sys.argv[1]\n"
+        "new_name = sys.argv[2]\n"
+        "try:\n"
+        "    if not os.path.exists(src):\n"
+        "        print('404: Source not found')\n"
+        "        sys.exit(1)\n"
+        "    parent = os.path.dirname(src)\n"
+        "    dest = os.path.join(parent, new_name)\n"
+        "    if os.path.exists(dest):\n"
+        "        print('400: Destination exists')\n"
+        "        sys.exit(2)\n"
+        "    os.rename(src, dest)\n"
+        "    print('200: Success')\n"
+        "except Exception as e:\n"
+        "    print(f'500: {e}')\n"
+        "    sys.exit(3)\n"
+    )
+    
+    escaped_code = remote_code.replace('"', '\\"').replace('$', '\\$')
+    ssh_cmd = [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-i", key_path,
+        f"{user}@{host}",
+        f"python3 -c \"{escaped_code}\" \"{source_path}\" \"{new_name}\""
+    ]
+    
+    try:
+        proc = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10.0)
+        output = proc.stdout.strip()
+        
+        if proc.returncode == 1:
+            raise HTTPException(status_code=404, detail="Source file or folder not found on remote server.")
+        elif proc.returncode == 2:
+            raise HTTPException(status_code=400, detail="A file or folder with the new name already exists on remote server.")
+        elif proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to rename on remote: {output} {proc.stderr}")
+            
+        return {"success": True, "message": f"Renamed remote item to {new_name}"}
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Connection to remote server timed out.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/fs/list")
-def list_directory(target_path: str = "/"):
+def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
     """Returns a JSON array of files and folders for the Explorer Modal."""
+    if remote_server:
+        return list_remote_directory(remote_server, target_path)
+        
     try:
         p = Path(target_path)
         if not p.exists() or not p.is_dir():
@@ -190,7 +320,10 @@ def list_directory(target_path: str = "/"):
 
 @app.post("/api/fs/rename")
 def rename_fs_item(request: RenameRequest):
-    """Renames a local file or folder immediately using os.rename."""
+    """Renames a file or folder immediately using local or remote os.rename."""
+    if request.remote_server:
+        return rename_remote_item(request.remote_server, request.source_path, request.new_name)
+        
     src = Path(request.source_path)
     if not src.exists():
         raise HTTPException(status_code=404, detail="Source file or folder not found.")
@@ -224,21 +357,47 @@ async def execute_fs_action(request: FsRequest):
     if action_data.get("requires_destination") and not request.destination_path:
         raise HTTPException(status_code=400, detail=f"Action '{request.action}' requires a destination path.")
         
-    # Validation 2: Require Remote Server
-    if action_data.get("requires_remote"):
+    # Validation 2: Require Remote Server (for local-to-remote actions)
+    if action_data.get("requires_remote") and not request.source_server:
         if not request.remote_server or request.remote_server not in remotes_config:
             raise HTTPException(status_code=400, detail="A valid Remote Server must be selected for this action.")
         remote_creds = remotes_config[request.remote_server]
         
     queued_count = 0
     for src in request.source_paths:
-        cmd = command_builder.build_fs_command(
-            request.action, 
-            src, 
-            request.destination_path, 
-            remote_creds
-        )
-        # CRITICAL FIX: Route to 'fs' queue
+        if request.source_server:
+            # We are performing actions on a remote filesystem context
+            if request.source_server not in remotes_config:
+                raise HTTPException(status_code=400, detail=f"Source remote server '{request.source_server}' not configured.")
+            
+            src_creds = remotes_config[request.source_server]
+            user = src_creds.get("user")
+            host = src_creds.get("host")
+            key_path = src_creds.get("key_path")
+            
+            if action_data.get("requires_remote"):
+                # Remote action: Pulling file from remote source to local destination
+                if request.action == "Remote Copy (SCP)":
+                    cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src}" "{request.destination_path}"'
+                elif request.action == "Remote Move (SCP)":
+                    cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src}" "{request.destination_path}" && ssh -o StrictHostKeyChecking=no -i "{key_path}" {user}@{host} "rm -rf \\"{src}\\""'
+                else:
+                    cmd = command_builder.build_fs_command(request.action, src, request.destination_path, src_creds)
+            else:
+                # Standard local-style action on remote machine: execute it over SSH
+                local_cmd = command_builder.build_fs_command(request.action, src, request.destination_path, None)
+                escaped_cmd = local_cmd.replace('\\', '\\\\').replace('"', '\\"')
+                cmd = f'ssh -o StrictHostKeyChecking=no -i "{key_path}" {user}@{host} "{escaped_cmd}"'
+        else:
+            # Local source context
+            cmd = command_builder.build_fs_command(
+                request.action, 
+                src, 
+                request.destination_path, 
+                remote_creds
+            )
+            
+        # Route to 'fs' queue
         await executor.start_task(cmd, queue_name="fs")
         queued_count += 1
         

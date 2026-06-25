@@ -309,21 +309,23 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 30px;
-    flex-wrap: wrap;
+    gap: 16px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
 }
 
 .switchboard-category {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 }
 
 .switchboard-category h5 {
     margin: 0;
     color: var(--cyan) !important;
     text-transform: uppercase;
-    font-size: 0.8em;
+    font-size: 0.72em;
     letter-spacing: 0.5px;
     white-space: nowrap;
 }
@@ -331,7 +333,7 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
 .switchboard-grid {
     display: flex;
     flex-direction: row;
-    gap: 8px;
+    gap: 6px;
 }
 
 .btn-switch {
@@ -339,16 +341,17 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
     color: #fff;
     border: none;
     border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 0.9em;
+    padding: 4px 10px;
+    font-size: 0.82em;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 8px;
-    min-height: 32px; /* Prevents button height from jumping when spinner drops in */
+    gap: 6px;
+    min-height: 28px; /* Prevents button height from jumping when spinner drops in */
+    white-space: nowrap;
 }
 
 .btn-switch:hover:not(:disabled) {

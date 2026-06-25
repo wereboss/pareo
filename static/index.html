@@ -114,7 +114,10 @@
                     <div class="card">
                         <h4>File Explorer</h4>
                         <p>Browse and manage files on the host machine.</p>
-                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px;">
+                        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
+                            <select id="fs-explore-server" onchange="onExploreServerChange()" style="width: 150px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-weight: bold;">
+                                <option value="">Local Filesystem</option>
+                            </select>
                             <input type="text" id="fs-explore-path" list="bookmarks-list" placeholder="/tmp/" value="/" style="flex-grow: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
                             <button class="btn" onclick="openExplorer()">Browse</button>
                             <span id="fs-notify" style="color: #2ecc71; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>

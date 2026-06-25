@@ -333,15 +333,55 @@ async function fetchRemotesConfig() {
         remotesConfig = await response.json();
         
         const serverSelect = document.getElementById('fs-remote-server');
+        const exploreSelect = document.getElementById('fs-explore-server');
         
         Object.keys(remotesConfig).forEach(serverName => {
             const opt = document.createElement('option');
             opt.value = serverName;
             opt.textContent = serverName;
             serverSelect.appendChild(opt);
+            
+            if (exploreSelect) {
+                const optExp = document.createElement('option');
+                optExp.value = serverName;
+                optExp.textContent = serverName;
+                exploreSelect.appendChild(optExp);
+            }
         });
     } catch (error) {
         console.error("Failed to load remote servers config:", error);
+    }
+}
+
+async function onExploreServerChange() {
+    const serverName = document.getElementById('fs-explore-server').value;
+    const pathInput = document.getElementById('fs-explore-path');
+    
+    // Clear and reload datalist options based on selected host (Local vs Remote)
+    const datalist = document.getElementById('bookmarks-list');
+    datalist.innerHTML = '';
+    
+    if (serverName) {
+        // Load Remote Bookmarks
+        const serverConfig = remotesConfig[serverName];
+        if (serverConfig && serverConfig.bookmarks) {
+            const bookmarks = serverConfig.bookmarks;
+            Object.entries(bookmarks).forEach(([name, path]) => {
+                const opt = document.createElement('option');
+                opt.value = path;
+                opt.textContent = name;
+                datalist.appendChild(opt);
+            });
+            // Set default value to first bookmark path or "/"
+            const firstPath = Object.values(bookmarks)[0] || '/';
+            pathInput.value = firstPath;
+        } else {
+            pathInput.value = '/';
+        }
+    } else {
+        // Load Local Bookmarks
+        await fetchBookmarks();
+        pathInput.value = '/';
     }
 }
 
@@ -372,22 +412,23 @@ async function fetchFsConfig() {
 // -----------------------------------------------------
 
 async function openExplorer() {
+    const remoteServer = document.getElementById('fs-explore-server').value;
     const targetPath = document.getElementById('fs-explore-path').value.trim() || '/';
     const modal = document.getElementById('explorer-modal');
     const title = document.getElementById('explorer-title');
     const list = document.getElementById('explorer-list');
 
     modal.style.display = 'flex'; // Show modal
-    title.textContent = `Browsing: ${targetPath}`;
+    title.textContent = `Browsing ${remoteServer ? remoteServer : 'Local'}: ${targetPath}`;
     list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Loading...</div>';
 
     try {
-        const response = await fetch(`/api/fs/list?target_path=${encodeURIComponent(targetPath)}`);
+        const response = await fetch(`/api/fs/list?target_path=${encodeURIComponent(targetPath)}&remote_server=${encodeURIComponent(remoteServer)}`);
         const data = await response.json();
 
         if (response.ok) {
             document.getElementById('fs-explore-path').value = data.target_path;
-            title.textContent = `Browsing: ${data.target_path}`;
+            title.textContent = `Browsing ${remoteServer ? remoteServer : 'Local'}: ${data.target_path}`;
             renderExplorerList(data.items, data.parent_path);
         } else {
             list.innerHTML = `<div style="padding: 20px; color: #e74c3c;">Error: ${data.detail || 'Could not load directory'}</div>`;
@@ -492,13 +533,15 @@ async function renameExplorerItem(path, oldName) {
         return;
     }
     
+    const remoteServer = document.getElementById('fs-explore-server').value;
     try {
         const response = await fetch('/api/fs/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 source_path: path,
-                new_name: newName.trim()
+                new_name: newName.trim(),
+                remote_server: remoteServer
             })
         });
         
@@ -569,6 +612,7 @@ async function executeFsBatch() {
     const action = document.getElementById('fs-action-select').value;
     const destInput = document.getElementById('fs-dest-path').value.trim();
     const remoteServer = document.getElementById('fs-remote-server').value; // NEW
+    const sourceServer = document.getElementById('fs-explore-server').value; // NEW
     
     const checkboxes = document.querySelectorAll('.fs-checkbox:checked');
     const sourcePaths = Array.from(checkboxes).map(cb => cb.value);
@@ -599,7 +643,8 @@ async function executeFsBatch() {
                 action: action,
                 source_paths: sourcePaths,
                 destination_path: destInput,
-                remote_server: remoteServer // NEW
+                remote_server: remoteServer, // NEW: Target server for local-to-remote
+                source_server: sourceServer   // NEW: Source server of selected files
             })
         });
 
