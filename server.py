@@ -204,7 +204,7 @@ def list_remote_directory(remote_name: str, target_path: str):
         "-o", "StrictHostKeyChecking=no",
         "-i", key_path,
         f"{user}@{host}",
-        f"python3 -c \"{escaped_code}\" \"{target_path}\""
+        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{target_path}\""
     ]
     
     try:
@@ -263,7 +263,7 @@ def rename_remote_item(remote_name: str, source_path: str, new_name: str):
         "-o", "StrictHostKeyChecking=no",
         "-i", key_path,
         f"{user}@{host}",
-        f"python3 -c \"{escaped_code}\" \"{source_path}\" \"{new_name}\""
+        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{source_path}\" \"{new_name}\""
     ]
     
     try:
