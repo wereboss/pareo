@@ -179,7 +179,12 @@ def list_directory(target_path: str = "/"):
                 
         # Sort folders first, then alphabetically
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
-        return {"target_path": str(p.absolute()), "items": items}
+        parent_path = str(p.parent.absolute()) if p.parent != p else None
+        return {
+            "target_path": str(p.absolute()),
+            "parent_path": parent_path,
+            "items": items
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

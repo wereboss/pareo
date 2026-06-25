@@ -386,7 +386,9 @@ async function openExplorer() {
         const data = await response.json();
 
         if (response.ok) {
-            renderExplorerList(data.items);
+            document.getElementById('fs-explore-path').value = data.target_path;
+            title.textContent = `Browsing: ${data.target_path}`;
+            renderExplorerList(data.items, data.parent_path);
         } else {
             list.innerHTML = `<div style="padding: 20px; color: #e74c3c;">Error: ${data.detail || 'Could not load directory'}</div>`;
         }
@@ -402,11 +404,35 @@ function closeExplorer() {
     onFsActionChange(); 
 }
 
-function renderExplorerList(items) {
+function browseToFolder(path) {
+    document.getElementById('fs-explore-path').value = path;
+    openExplorer();
+}
+
+function renderExplorerList(items, parentPath) {
     const list = document.getElementById('explorer-list');
     list.innerHTML = ''; // Clear loading
 
-    if (items.length === 0) {
+    // Prepend parent directory navigation row
+    if (parentPath) {
+        const pDiv = document.createElement('div');
+        pDiv.className = 'file-item parent-dir-item';
+        pDiv.style.cursor = 'pointer';
+        pDiv.onclick = () => browseToFolder(parentPath);
+        
+        pDiv.innerHTML = `
+            <input type="checkbox" class="fs-checkbox" style="visibility: hidden; margin-right: 15px;">
+            <span class="file-icon">📁</span>
+            <span class="file-name" style="font-weight: bold; color: var(--cyan);">.. (Parent Directory)</span>
+            <span class="file-size"></span>
+            <div class="file-actions" style="display: flex; gap: 8px;">
+                <button class="action-icon-btn" title="Go Up" style="pointer-events: none;">📂</button>
+            </div>
+        `;
+        list.appendChild(pDiv);
+    }
+
+    if (items.length === 0 && !parentPath) {
         list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Directory is empty.</div>';
         return;
     }
@@ -422,21 +448,40 @@ function renderExplorerList(items) {
             <input type="checkbox" class="fs-checkbox" value="${item.path}">
             <span class="file-icon">${icon}</span>
             <span class="file-name">${item.name}</span>
-            <span class="file-size">${sizeStr}</span>
+            <span class="file-size" style="margin-right: 15px; color: var(--base01);">${sizeStr}</span>
         `;
         
-        // Create the Rename button programmatically to avoid HTML quotes escaping issues
+        // Actions Container
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'file-actions';
+        actionsDiv.style.display = 'flex';
+        actionsDiv.style.gap = '8px';
+
+        // Add Browse button for directories
+        if (item.is_dir) {
+            const browseBtn = document.createElement('button');
+            browseBtn.className = 'action-icon-btn';
+            browseBtn.innerHTML = '📂';
+            browseBtn.title = 'Browse Directory';
+            browseBtn.onclick = (e) => {
+                e.stopPropagation();
+                browseToFolder(item.path);
+            };
+            actionsDiv.appendChild(browseBtn);
+        }
+
+        // Add Rename button
         const renameBtn = document.createElement('button');
-        renameBtn.className = 'btn btn-sm btn-rename';
-        renameBtn.innerHTML = '✏️ Rename';
-        renameBtn.style.padding = '2px 8px';
-        renameBtn.style.fontSize = '0.8em';
-        renameBtn.style.marginLeft = '10px';
-        renameBtn.style.cursor = 'pointer';
-        
-        renameBtn.onclick = () => renameExplorerItem(item.path, item.name);
-        
-        div.appendChild(renameBtn);
+        renameBtn.className = 'action-icon-btn';
+        renameBtn.innerHTML = '✏️';
+        renameBtn.title = 'Rename';
+        renameBtn.onclick = (e) => {
+            e.stopPropagation();
+            renameExplorerItem(item.path, item.name);
+        };
+        actionsDiv.appendChild(renameBtn);
+
+        div.appendChild(actionsDiv);
         list.appendChild(div);
     });
 }

@@ -306,21 +306,28 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
 
 /* --- Switchboard UI --- */
 .switchboard-category {
-    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
 }
 
 .switchboard-category h5 {
-    margin: 0 0 10px 0;
-    color: #7f8c8d;
+    margin: 0;
+    color: var(--cyan) !important;
     text-transform: uppercase;
     font-size: 0.85em;
     letter-spacing: 0.5px;
+    min-width: 120px;
 }
 
 .switchboard-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 12px;
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    flex-wrap: wrap;
+    flex-grow: 1;
 }
 
 .btn-switch {
@@ -328,7 +335,7 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
     color: #fff;
     border: none;
     border-radius: 6px;
-    padding: 12px 15px;
+    padding: 6px 12px;
     font-size: 0.9em;
     font-weight: 600;
     cursor: pointer;
@@ -337,7 +344,7 @@ code { font-family: monospace; background: #eee; padding: 2px 4px; border-radius
     justify-content: center;
     align-items: center;
     gap: 8px;
-    min-height: 44px; /* Prevents button height from jumping when spinner drops in */
+    min-height: 32px; /* Prevents button height from jumping when spinner drops in */
 }
 
 .btn-switch:hover:not(:disabled) {
@@ -581,4 +588,24 @@ table td code {
     color: var(--red) !important; 
     transform: scale(1.1);
     transition: all 0.2s ease;
+}
+
+/* 4. Action Icon Buttons inside Explorer Modal */
+.action-icon-btn {
+    background: transparent !important;
+    border: none !important;
+    font-size: 1.1em !important;
+    cursor: pointer !important;
+    padding: 4px 6px !important;
+    border-radius: 4px !important;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease !important;
+    box-shadow: none !important;
+}
+
+.action-icon-btn:hover {
+    background: rgba(42, 161, 152, 0.2) !important; /* Solarized cyan translucent hover background */
+    transform: scale(1.1);
 }
