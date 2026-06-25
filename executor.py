@@ -315,3 +315,13 @@ def start_workers():
     for q_name, q in task_queues.items():
         task = asyncio.create_task(worker(q_name, q))
         active_workers.append(task) # <--- This prevents Python from killing the thread
+
+async def stop_workers():
+    """Cancels all active worker tasks and waits for them to exit."""
+    print("[*] Stopping background workers...")
+    for task in active_workers:
+        task.cancel()
+    if active_workers:
+        await asyncio.gather(*active_workers, return_exceptions=True)
+        active_workers.clear()
+    print("[*] All background workers stopped.")

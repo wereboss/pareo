@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI):
     print("--------------------------")
 
     yield
-    # Cancel the worker when the server stops
-    # worker_task.cancel()
+    # Cleanly stop workers on shutdown
+    await executor.stop_workers()
 
 app = FastAPI(title="Pareo API", lifespan=lifespan)
 
