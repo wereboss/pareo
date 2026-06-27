@@ -14,14 +14,16 @@
                 "MM_Downloads": "/Users/sri/Downloads/",
                 "MM_Eng)Movies": "/Volumes/Server HDD2/VidsMini/Movies/English/",
                 "MM_Series": "/Volumes/Server HDD2/VidsMini/Series/",
-                "MM_Documentaries": "/Volumes/Server HDD2/VidsMini/Docus/"
+                "MM_Documentaries": "/Volumes/Server HDD2/VidsMini/Docus/",
+                "HDD_Movies": "/Volumes/SRIPASS/Sri/Vids/Movies/English/LiveAction/",
+                "HDD_Series": "/Volumes/SRIPASS/Sri/Vids/Series/"
             }
         }
     },
     "generic_cards": {
         "Torrent Downloader": {
             "task_type": "network",
-            "command_template": "aria2c --seed-time=0 --max-connection-per-server=16 --split=16 --min-split-size=1M --max-concurrent-downloads=5 --enable-peer-exchange=true --follow-torrent=mem --file-allocation=none '{url}' -d '{save_path}'",
+            "command_template": "aria2c --conf-path=/home/sayang/.aria2/aria2.conf --bt-tracker='$(curl -Ns https://githubusercontent.com | awk NF | paste -sd, -)' '{url}' -d '{save_path}'",
             "inputs": [
                 { "id": "url", "label": "Torrent URL or Magnet Link", "type": "text" },
                 { "id": "save_path", "label": "Save Directory", "type": "directory" }
@@ -132,6 +134,14 @@
             "port": 9028,
             "cwd": "/home/sayang/Programs/papyro",
             "log_file": "logs/papyro.log"
+        }
+    },
+    "queue_settings": {
+        "concurrency": {
+            "media": 1,
+            "network": 2,
+            "fs": 2,
+            "default": 1
         }
     }
 }

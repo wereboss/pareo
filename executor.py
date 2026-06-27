@@ -247,21 +247,39 @@ async def retry_task(task_id: str):
     q_name = task.get("queue_name")
     if not q_name:
         q_name = resolve_queue_from_command(task['command'])
-        
     target_queue = task_queues.get(q_name, task_queues["default"])
     await target_queue.put((task_id, task['command']))
     return True
 
-async def worker(queue_name: str, queue: asyncio.Queue):
-    """A dedicated worker listening only to its specific queue."""
-    print(f"[*] Started background worker for queue: {queue_name.upper()}")
+def get_queue_concurrency(queue_name: str) -> int:
+    """Loads max allowed concurrent tasks per queue from config.json or default values."""
+    try:
+        import command_builder
+        config = command_builder.load_config()
+        concurrency_settings = config.get("queue_settings", {}).get("concurrency", {})
+        if queue_name in concurrency_settings:
+            return int(concurrency_settings[queue_name])
+    except Exception:
+        pass
+    
+    default_concurrency = {
+        "media": 1,
+        "network": 2,
+        "fs": 2,
+        "default": 1
+    }
+    return default_concurrency.get(queue_name, 1)
+
+async def worker(queue_name: str, queue: asyncio.Queue, worker_id: int = 1):
+    """A dedicated worker listening to its specific queue with concurrency control."""
+    print(f"[*] Started background worker {worker_id} for queue: {queue_name.upper()}")
     while True:
         task_id, command = await queue.get()
-        print(f"[{queue_name.upper()} WORKER] Picked up task {task_id[:8]}")
+        print(f"[{queue_name.upper()} WORKER {worker_id}] Picked up task {task_id[:8]}")
         
         try:
-            # Check if there is another task in this queue that is already 'Running'
-            # (e.g. a task that survived reboot and is still running in the background)
+            max_concurrent = get_queue_concurrency(queue_name)
+            # Check if active running tasks in this queue reached max_concurrent limit
             while True:
                 running_tasks = []
                 with database.get_conn() as conn:
@@ -271,23 +289,22 @@ async def worker(queue_name: str, queue: asyncio.Queue):
                     )
                     running_tasks = [dict(row) for row in cur.fetchall()]
                 
-                still_active = False
+                still_active_count = 0
                 for rt in running_tasks:
                     pid = rt.get("pid")
                     if pid:
                         try:
                             import os
                             os.kill(pid, 0)
-                            still_active = True
-                            break
+                            still_active_count += 1
                         except (ProcessLookupError, PermissionError):
                             pass
                 
-                if not still_active:
+                if still_active_count < max_concurrent:
                     break
                 
-                # If there's an active running task, wait 2 seconds before checking again
-                await asyncio.sleep(2.0)
+                # If active running tasks reached concurrency limit, wait 0.5s before checking again
+                await asyncio.sleep(0.5)
 
             # Execute the command
             await run_command(task_id, command)
@@ -295,7 +312,7 @@ async def worker(queue_name: str, queue: asyncio.Queue):
         except Exception as e:
             # If a database lock or bizarre OS error bypasses run_command's internal safety net,
             # this catches it so the worker thread does NOT die.
-            print(f"[{queue_name.upper()} WORKER FATAL ERROR] Task {task_id[:8]} caused a thread crash: {str(e)}")
+            print(f"[{queue_name.upper()} WORKER {worker_id} FATAL ERROR] Task {task_id[:8]} caused a thread crash: {str(e)}")
             
             # Attempt a last-resort fallback to mark it as failed so it doesn't get stuck Running
             try:
@@ -311,10 +328,12 @@ async def worker(queue_name: str, queue: asyncio.Queue):
 
 # 2. Update start_workers to save the references
 def start_workers():
-    """Spawns an independent worker thread for each queue type and keeps them alive."""
+    """Spawns independent worker threads for each queue type according to concurrency config."""
     for q_name, q in task_queues.items():
-        task = asyncio.create_task(worker(q_name, q))
-        active_workers.append(task) # <--- This prevents Python from killing the thread
+        concurrency = get_queue_concurrency(q_name)
+        for i in range(concurrency):
+            task = asyncio.create_task(worker(q_name, q, worker_id=i+1))
+            active_workers.append(task) # <--- This prevents Python from killing the thread
 
 async def stop_workers():
     """Cancels all active worker tasks and waits for them to exit."""
