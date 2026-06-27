@@ -419,6 +419,11 @@ def get_tasks(
     c = command if command else None
     return database.get_tasks_paginated(limit=limit, offset=offset, queue=q, status=s, command=c)
 
+@app.get("/api/tasks/counts")
+def get_task_counts():
+    """Serves real-time ongoing and pending task counts for the header ticker."""
+    return database.get_task_counts()
+
 @app.get("/api/tasks/{task_id}")
 def get_single_task(task_id: str):
     """Retrieves high-speed streaming data from SQLite."""

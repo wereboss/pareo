@@ -10,7 +10,13 @@
 <body>
     <div id="global-loading-bar" style="height: 3px; background: var(--cyan, #2aa198); width: 0%; position: fixed; top: 0; left: 0; z-index: 9999; transition: width 0.2s ease, opacity 0.3s ease; opacity: 0;"></div>
     <nav class="top-nav">
-        <h3 style="margin: 0; color: #333;">Pareo</h3>
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <h3 style="margin: 0; color: #333;">Pareo</h3>
+            <div id="task-ticker" class="ticker-badge" style="display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 20px; font-size: 0.82em; font-weight: bold; transition: all 0.3s ease;">
+                <span id="ticker-dot" class="ticker-dot idle" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block; transition: background 0.3s ease;"></span>
+                <span id="ticker-text">Ongoing: 0 | Pending: 0</span>
+            </div>
+        </div>
         <div class="nav-links">
             <button id="btn-tasks" class="nav-btn active" onclick="switchTab('tasks')">Tasks Queue</button>
             <button id="btn-utilities" class="nav-btn" onclick="switchTab('utilities')">Utilities</button>

@@ -123,6 +123,21 @@ def get_task(task_id: str):
         row = cur.fetchone()
         return dict(row) if row else None
 
+def get_task_counts():
+    """Returns exact counts of ongoing (Running) and pending tasks."""
+    with get_conn() as conn:
+        cur = conn.execute("""
+            SELECT 
+                SUM(CASE WHEN status = 'Running' THEN 1 ELSE 0 END) as ongoing,
+                SUM(CASE WHEN status = 'Pending' THEN 1 ELSE 0 END) as pending
+            FROM tasks
+        """)
+        row = cur.fetchone()
+        return {
+            "ongoing": row["ongoing"] if row["ongoing"] is not None else 0,
+            "pending": row["pending"] if row["pending"] is not None else 0
+        }
+
 # --- RECOVERY LOGIC ---
 
 def mark_running_as_failed():

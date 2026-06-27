@@ -140,6 +140,7 @@ async function fetchTasks(offset = 0) {
         
         hasMoreTasks = newTasksCount === tasksLimit;
         renderTasks(loadedTasks);
+        updateTaskTicker();
         
         const loadMoreContainer = document.getElementById('tasks-load-more-container');
         if (loadMoreContainer) {
@@ -1127,7 +1128,53 @@ async function purgeTasks() {
     }
 }
 
+// --- TASK TICKER LOGIC ---
+let tickerTimeout = null;
+
+async function updateTaskTicker() {
+    try {
+        const response = await fetch('/api/tasks/counts');
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        const tickerBadge = document.getElementById('task-ticker');
+        const tickerDot = document.getElementById('ticker-dot');
+        const tickerText = document.getElementById('ticker-text');
+        
+        if (!tickerBadge || !tickerText) return;
+        
+        const ongoing = data.ongoing || 0;
+        const pending = data.pending || 0;
+        
+        tickerText.textContent = `Ongoing: ${ongoing} | Pending: ${pending}`;
+        
+        if (ongoing > 0 || pending > 0) {
+            tickerBadge.classList.add('active');
+            if (tickerDot) {
+                tickerDot.className = 'ticker-dot active';
+            }
+        } else {
+            tickerBadge.classList.remove('active');
+            if (tickerDot) {
+                tickerDot.className = 'ticker-dot idle';
+            }
+        }
+        
+        // Exact requirement: 5s refresh when there are pending tasks, 1min (60s) refresh when there are no pending tasks.
+        const nextInterval = pending > 0 ? 5000 : 60000;
+        
+        if (tickerTimeout) clearTimeout(tickerTimeout);
+        tickerTimeout = setTimeout(updateTaskTicker, nextInterval);
+        
+    } catch (error) {
+        console.error("Failed to update task ticker:", error);
+        if (tickerTimeout) clearTimeout(tickerTimeout);
+        tickerTimeout = setTimeout(updateTaskTicker, 15000);
+    }
+}
+
 fetchTasks(0); // Initial fetch on load
+updateTaskTicker(); // Initial ticker update
 
 // ADD THIS at the very bottom of app.js (below fetchTasks())
 fetchProfiles();
