@@ -936,6 +936,8 @@ async function fetchGenericCards() {
                 // If it is a directory type, reuse our existing fs-bookmarks datalist!
                 if (input.type === 'directory') {
                     html += `<input type="text" id="${safeName}-${input.id}" name="${input.id}" list="bookmarks-list" autocomplete="off" placeholder="Double-click to view bookmarks..." style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required>`;
+                } else if (input.type === 'textarea') {
+                    html += `<textarea id="${safeName}-${input.id}" name="${input.id}" rows="4" placeholder="Paste links here..." style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required></textarea>`;
                 } else {
                     html += `<input type="text" id="${safeName}-${input.id}" name="${input.id}" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required>`;
                 }
@@ -1034,7 +1036,11 @@ async function fireGenericTask(cardName, safeName, formElement, schemaInputs) {
 
         if (response.ok) {
             submitBtn.style.background = '#27ae60';
-            submitBtn.textContent = `Queued (ID: ${data.task_id.split('-')[0]})`;
+            if (data.task_id) {
+                submitBtn.textContent = `Queued (ID: ${data.task_id.split('-')[0]})`;
+            } else {
+                submitBtn.textContent = `Queued (${data.queued_count || 'Multi'} Tasks)`;
+            }
             formElement.reset(); 
             
             // Force the task list to update immediately and switch tabs

@@ -499,9 +499,14 @@ def get_generic_cards():
     config = command_builder.load_config()
     return config.get("generic_cards", {})
 
+def _clean_shell_url(url_str: str) -> str:
+    cleaned = str(url_str).replace('"', '').replace("'", "")
+    return f"'{cleaned}'"
+
 @app.post("/api/execute/generic")
 async def execute_generic(request: GenericTaskRequest):
-    """Parses dynamic inputs into a template and queues the task."""
+    """Parses dynamic inputs into a template and queues the task(s)."""
+    import re
     config = command_builder.load_config()
     cards = config.get("generic_cards", {})
     
@@ -509,24 +514,62 @@ async def execute_generic(request: GenericTaskRequest):
         raise HTTPException(status_code=404, detail="Generic card configuration not found.")
         
     card_config = cards[request.card_name]
-    command = card_config.get("command_template", "")
-    
-    # Inject the user inputs into the {placeholders}
-    for key, value in request.inputs.items():
-        command = command.replace(f"{{{key}}}", str(value))
-        
-    # Identify the target parallel queue
+    template = card_config.get("command_template", "")
     queue_name = card_config.get("task_type", "default")
+    batch_size = card_config.get("batch_size")
     
-    # Submit to the parallel engine using the correct function name
-    task_id = await executor.start_task(command, queue_name=queue_name)
-    
-    return {
-        "message": "Task generated and queued.", 
-        "task_id": task_id, 
-        "queue": queue_name,
-        "final_command": command
-    }
+    # Check if we have a multi-link input (e.g. 'url' or similar list field)
+    urls_input = request.inputs.get("url", "")
+    urls_list = []
+    if urls_input:
+        # Split by newlines, spaces, or commas
+        items = re.split(r'[\r\n,\s]+', str(urls_input).strip())
+        urls_list = [item.strip() for item in items if item.strip()]
+        
+    if batch_size or len(urls_list) > 1:
+        if not urls_list:
+            raise HTTPException(status_code=400, detail="No valid URLs or links provided.")
+            
+        bs = int(batch_size) if batch_size else 5
+        url_batches = [urls_list[i:i + bs] for i in range(0, len(urls_list), bs)]
+        
+        queued_tasks = []
+        for batch in url_batches:
+            # Single-quote each URL safely for shell command execution
+            batch_url_str = " ".join(_clean_shell_url(u) for u in batch)
+            
+            cmd = template
+            for key, value in request.inputs.items():
+                if key == "url":
+                    cmd = cmd.replace("{url}", batch_url_str)
+                else:
+                    cmd = cmd.replace(f"{{{key}}}", str(value))
+                    
+            task_id = await executor.start_task(cmd, queue_name=queue_name)
+            queued_tasks.append(task_id)
+            
+        return {
+            "message": f"Successfully queued {len(queued_tasks)} task(s) ({len(urls_list)} links total).",
+            "queued_count": len(queued_tasks),
+            "queue": queue_name
+        }
+    else:
+        # Single execution fallback
+        command = template
+        for key, value in request.inputs.items():
+            if key == "url" and urls_list:
+                single_url_str = _clean_shell_url(urls_list[0])
+                command = command.replace("{url}", single_url_str)
+            else:
+                command = command.replace(f"{{{key}}}", str(value))
+                
+        task_id = await executor.start_task(command, queue_name=queue_name)
+        return {
+            "message": "Task generated and queued.", 
+            "task_id": task_id, 
+            "queue": queue_name,
+            "final_command": command
+        }
 
 class ProcessActionRequest(BaseModel):
     name: str
