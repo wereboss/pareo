@@ -628,3 +628,65 @@ table td code {
     background: rgba(42, 161, 152, 0.2) !important; /* Solarized cyan translucent hover background */
     transform: scale(1.1);
 }
+
+/* --- Authentication Overlays --- */
+.auth-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 43, 54, 0.95); /* base03 with high opacity */
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(10px);
+    transition: opacity 0.3s ease;
+}
+
+.auth-card {
+    background: var(--base02) !important;
+    border: 1px solid var(--base01) !important;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
+    border-radius: 8px;
+    padding: 30px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+}
+
+.auth-input {
+    width: 100%;
+    padding: 12px;
+    margin: 15px 0;
+    background: var(--base03) !important;
+    border: 1px solid var(--base01) !important;
+    border-radius: 4px;
+    color: var(--cyan) !important;
+    font-size: 1.1em;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.3s ease;
+}
+
+.auth-input:focus {
+    border-color: var(--cyan) !important;
+}
+
+.auth-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--cyan) !important;
+    color: var(--base03) !important;
+    border: none !important;
+    border-radius: 4px;
+    font-size: 1em;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.auth-btn:hover {
+    background: #2aa198cc !important;
+}

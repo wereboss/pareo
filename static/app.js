@@ -1,3 +1,26 @@
+// Hash helper using Web Crypto API (SHA-256)
+async function sha256(message) {
+    const msgBuffer = new TextEncoder().encode(message);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Global fetch override for transparent auth handling
+const originalFetch = window.fetch;
+window.fetch = async function (url, options = {}) {
+    const token = localStorage.getItem('pareo_auth_token');
+    if (token) {
+        options.headers = options.headers || {};
+        options.headers['X-Pareo-Auth'] = token;
+    }
+    const response = await originalFetch(url, options);
+    if (response.status === 401) {
+        showAuthOverlay('login');
+    }
+    return response;
+};
+
 // NEW: Track which tasks have an active, high-speed targeted poll running
 const activePolls = new Set();
 // NEW: Global state to hold the pipeline configuration
@@ -1173,20 +1196,131 @@ async function updateTaskTicker() {
     }
 }
 
-fetchTasks(0); // Initial fetch on load
-updateTaskTicker(); // Initial ticker update
+let currentAuthMode = 'login'; // 'login' or 'setup'
 
-// ADD THIS at the very bottom of app.js (below fetchTasks())
-fetchProfiles();
-fetchFsConfig(); // NEW: Load FS Schema
-fetchBookmarks(); // NEW: Load the global path shortcuts
-fetchRemotesConfig(); // NEW: Load remote servers
-fetchSwitchboardConfig();
-fetchGenericCards();
-fetchProcessConfig(); // NEW: Load local process monitors config
-switchTab('tasks'); // NEW: Force the UI to sync and show tasks on load
+function showAuthOverlay(mode) {
+    currentAuthMode = mode;
+    const overlay = document.getElementById('auth-overlay');
+    const title = document.getElementById('auth-title');
+    const desc = document.getElementById('auth-desc');
+    const errorMsg = document.getElementById('auth-error');
+    const passInput = document.getElementById('auth-password');
+    
+    if (!overlay) return;
+    
+    errorMsg.style.display = 'none';
+    passInput.value = '';
+    
+    if (mode === 'setup') {
+        title.textContent = "Secure Your Instance";
+        desc.textContent = "Set a Master Password to lock down the Pareo engine.";
+        passInput.placeholder = "Enter new master password";
+    } else {
+        title.textContent = "Authentication Required";
+        desc.textContent = "Enter your master password to access Pareo.";
+        passInput.placeholder = "Password";
+    }
+    
+    overlay.style.display = 'flex';
+    passInput.focus();
+}
+
+async function handleAuthSubmit(event) {
+    event.preventDefault();
+    const password = document.getElementById('auth-password').value;
+    const errorMsg = document.getElementById('auth-error');
+    
+    if (!password) return;
+    
+    const passwordHash = await sha256(password);
+    
+    try {
+        if (currentAuthMode === 'setup') {
+            const res = await originalFetch('/api/auth/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password_hash: passwordHash })
+            });
+            if (res.ok) {
+                localStorage.setItem('pareo_auth_token', passwordHash);
+                document.getElementById('auth-overlay').style.display = 'none';
+                initApp();
+            } else {
+                const data = await res.json();
+                errorMsg.textContent = data.detail || "Setup failed.";
+                errorMsg.style.display = 'block';
+            }
+        } else {
+            const res = await originalFetch('/api/auth/verify', {
+                method: 'GET',
+                headers: { 'X-Pareo-Auth': passwordHash }
+            });
+            const data = await res.json();
+            if (data.status === 'authorized') {
+                localStorage.setItem('pareo_auth_token', passwordHash);
+                document.getElementById('auth-overlay').style.display = 'none';
+                initApp();
+            } else {
+                errorMsg.textContent = "Incorrect password.";
+                errorMsg.style.display = 'block';
+            }
+        }
+    } catch (e) {
+        errorMsg.textContent = "Network error. Try again.";
+        errorMsg.style.display = 'block';
+    }
+}
+
+function logout() {
+    localStorage.removeItem('pareo_auth_token');
+    window.location.reload();
+}
+
+async function initApp() {
+    try {
+        const response = await originalFetch('/api/auth/verify');
+        const data = await response.json();
+        const lockBtn = document.getElementById('btn-lock');
+        
+        if (data.status === 'setup_needed') {
+            if (lockBtn) lockBtn.style.display = 'none';
+            showAuthOverlay('setup');
+            return;
+        } else if (data.status === 'unauthorized') {
+            if (lockBtn) lockBtn.style.display = 'none';
+            showAuthOverlay('login');
+            return;
+        }
+        
+        // Show Lock button if authorized and password is set
+        if (lockBtn) lockBtn.style.display = 'inline-flex';
+        
+    } catch (error) {
+        console.error("Auth check failed:", error);
+    }
+    
+    // Auth is verified or disabled, load the app
+    fetchTasks(0);
+    updateTaskTicker();
+    fetchProfiles();
+    fetchFsConfig();
+    fetchBookmarks();
+    fetchRemotesConfig();
+    fetchSwitchboardConfig();
+    fetchGenericCards();
+    fetchProcessConfig();
+    switchTab('tasks');
+}
+
+initApp();
+
 // Start the polling loop (every 2.5 minutes)
-setInterval(() => fetchTasks(0), 150000);
+setInterval(() => {
+    const authOverlay = document.getElementById('auth-overlay');
+    if (!authOverlay || authOverlay.style.display === 'none') {
+        fetchTasks(0);
+    }
+}, 150000);
 
 // --- PROCESS MONITORING LOGIC ---
 let processConfig = {};

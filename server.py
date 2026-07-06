@@ -3,7 +3,8 @@ import glob
 from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
@@ -77,6 +78,57 @@ async def lifespan(app: FastAPI):
     await executor.stop_workers()
 
 app = FastAPI(title="Pareo API", lifespan=lifespan)
+
+# --- AUTHENTICATION SYSTEM ---
+class PasswordSetupRequest(BaseModel):
+    password_hash: str
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+    if not path.startswith("/api") or path in ("/api/auth/setup", "/api/auth/verify"):
+        return await call_next(request)
+        
+    config = command_builder.load_config()
+    master_hash = config.get("master_password_hash")
+    
+    if not master_hash:
+        return await call_next(request)
+        
+    auth_header = request.headers.get("X-Pareo-Auth")
+    if not auth_header or auth_header != master_hash:
+        return JSONResponse(status_code=401, content={"detail": "Unauthorized: Invalid or missing X-Pareo-Auth header."})
+        
+    return await call_next(request)
+
+@app.get("/api/auth/verify")
+def verify_auth(request: Request):
+    """Checks the authentication status of the client session."""
+    config = command_builder.load_config()
+    master_hash = config.get("master_password_hash")
+    
+    if not master_hash:
+        return {"status": "setup_needed"}
+        
+    auth_header = request.headers.get("X-Pareo-Auth")
+    if auth_header == master_hash:
+        return {"status": "authorized"}
+        
+    return {"status": "unauthorized"}
+
+@app.post("/api/auth/setup")
+def setup_password(req: PasswordSetupRequest):
+    """Saves the initial master password hash to config.json."""
+    config = command_builder.load_config()
+    if config.get("master_password_hash"):
+        raise HTTPException(status_code=400, detail="Master password is already configured.")
+        
+    config["master_password_hash"] = req.password_hash
+    import json
+    with open('config.json', 'w') as f:
+        json.dump(config, f, indent=4)
+        
+    return {"message": "Master password successfully configured."}
 
 class GenericTaskRequest(BaseModel):
     card_name: str
