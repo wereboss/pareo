@@ -1,11 +1,3 @@
-// Hash helper using Web Crypto API (SHA-256)
-async function sha256(message) {
-    const msgBuffer = new TextEncoder().encode(message);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 // Global fetch override for transparent auth handling
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
@@ -1232,36 +1224,35 @@ async function handleAuthSubmit(event) {
     
     if (!password) return;
     
-    const passwordHash = await sha256(password);
-    
     try {
         if (currentAuthMode === 'setup') {
             const res = await originalFetch('/api/auth/setup', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password_hash: passwordHash })
+                body: JSON.stringify({ password: password })
             });
-            if (res.ok) {
-                localStorage.setItem('pareo_auth_token', passwordHash);
+            const data = await res.json();
+            if (res.ok && data.token) {
+                localStorage.setItem('pareo_auth_token', data.token);
                 document.getElementById('auth-overlay').style.display = 'none';
                 initApp();
             } else {
-                const data = await res.json();
                 errorMsg.textContent = data.detail || "Setup failed.";
                 errorMsg.style.display = 'block';
             }
         } else {
-            const res = await originalFetch('/api/auth/verify', {
-                method: 'GET',
-                headers: { 'X-Pareo-Auth': passwordHash }
+            const res = await originalFetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: password })
             });
             const data = await res.json();
-            if (data.status === 'authorized') {
-                localStorage.setItem('pareo_auth_token', passwordHash);
+            if (res.ok && data.token) {
+                localStorage.setItem('pareo_auth_token', data.token);
                 document.getElementById('auth-overlay').style.display = 'none';
                 initApp();
             } else {
-                errorMsg.textContent = "Incorrect password.";
+                errorMsg.textContent = data.detail || "Incorrect password.";
                 errorMsg.style.display = 'block';
             }
         }
