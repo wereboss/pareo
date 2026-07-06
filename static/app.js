@@ -1,19 +1,21 @@
 // Global fetch override for transparent auth handling
 const originalFetch = window.fetch;
-window.fetch = async function (url, options = {}) {
+window.fetch = async function (url, options) {
     const token = localStorage.getItem('pareo_auth_token');
+    
     if (token) {
-        if (!options.headers) {
-            options.headers = {};
-        }
-        if (options.headers instanceof Headers) {
-            options.headers.set('X-Pareo-Auth', token);
-        } else if (Array.isArray(options.headers)) {
-            options.headers.push(['X-Pareo-Auth', token]);
+        let opt = options || {};
+        if (opt.headers instanceof Headers) {
+            opt.headers.set('X-Pareo-Auth', token);
+        } else if (Array.isArray(opt.headers)) {
+            opt.headers.push(['X-Pareo-Auth', token]);
         } else {
-            options.headers['X-Pareo-Auth'] = token;
+            opt.headers = opt.headers || {};
+            opt.headers['X-Pareo-Auth'] = token;
         }
+        options = opt;
     }
+    
     const response = await originalFetch(url, options);
     if (response.status === 401) {
         showAuthOverlay('login');
@@ -1199,6 +1201,7 @@ async function updateTaskTicker() {
 let currentAuthMode = 'login'; // 'login' or 'setup'
 
 function showAuthOverlay(mode) {
+    console.log("[Pareo Auth] showAuthOverlay called with mode:", mode);
     currentAuthMode = mode;
     const overlay = document.getElementById('auth-overlay');
     const title = document.getElementById('auth-title');
@@ -1206,7 +1209,11 @@ function showAuthOverlay(mode) {
     const errorMsg = document.getElementById('auth-error');
     const passInput = document.getElementById('auth-password');
     
-    if (!overlay) return;
+    console.log("[Pareo Auth] DOM Elements: overlay=", overlay, "title=", title, "desc=", desc, "errorMsg=", errorMsg, "passInput=", passInput);
+    if (!overlay) {
+        console.error("[Pareo Auth] CRITICAL: auth-overlay element not found in DOM!");
+        return;
+    }
     
     errorMsg.style.display = 'none';
     passInput.value = '';
@@ -1276,28 +1283,33 @@ function logout() {
 }
 
 async function initApp() {
+    console.log("[Pareo Auth] initApp() verifying session state...");
     try {
         const response = await originalFetch('/api/auth/verify');
         const data = await response.json();
+        console.log("[Pareo Auth] /api/auth/verify response data:", data);
         const lockBtn = document.getElementById('btn-lock');
         
         if (data.status === 'setup_needed') {
+            console.log("[Pareo Auth] Routing user to master password setup overlay.");
             if (lockBtn) lockBtn.style.display = 'none';
             showAuthOverlay('setup');
             return;
         } else if (data.status === 'unauthorized') {
+            console.log("[Pareo Auth] Routing user to login overlay.");
             if (lockBtn) lockBtn.style.display = 'none';
             showAuthOverlay('login');
             return;
         }
         
-        // Show Lock button if authorized and password is set
+        console.log("[Pareo Auth] Client authorized. Displaying lock button.");
         if (lockBtn) lockBtn.style.display = 'inline-flex';
         
     } catch (error) {
-        console.error("Auth check failed:", error);
+        console.error("[Pareo Auth] Verify check failed:", error);
     }
     
+    console.log("[Pareo Auth] Session verified/bypassed. Loading page cards and queues...");
     // Auth is verified or disabled, load the app
     fetchTasks(0);
     updateTaskTicker();
