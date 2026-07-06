@@ -3,8 +3,16 @@ const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
     const token = localStorage.getItem('pareo_auth_token');
     if (token) {
-        options.headers = options.headers || {};
-        options.headers['X-Pareo-Auth'] = token;
+        if (!options.headers) {
+            options.headers = {};
+        }
+        if (options.headers instanceof Headers) {
+            options.headers.set('X-Pareo-Auth', token);
+        } else if (Array.isArray(options.headers)) {
+            options.headers.push(['X-Pareo-Auth', token]);
+        } else {
+            options.headers['X-Pareo-Auth'] = token;
+        }
     }
     const response = await originalFetch(url, options);
     if (response.status === 401) {
@@ -1303,7 +1311,9 @@ async function initApp() {
     switchTab('tasks');
 }
 
-initApp();
+window.addEventListener('DOMContentLoaded', () => {
+    initApp();
+});
 
 // Start the polling loop (every 2.5 minutes)
 setInterval(() => {
