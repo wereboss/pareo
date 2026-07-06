@@ -1,7 +1,29 @@
+// Helper to retrieve the auth token, clearing it if it exceeds 2 days (session age)
+function getAuthToken() {
+    const token = localStorage.getItem('pareo_auth_token');
+    const timestamp = localStorage.getItem('pareo_auth_timestamp');
+    if (!token) return null;
+    
+    if (timestamp) {
+        const ageMs = Date.now() - parseInt(timestamp, 10);
+        const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+        if (ageMs > twoDaysMs) {
+            console.log("[Pareo Auth] Session expired (older than 2 days). Clearing token.");
+            localStorage.removeItem('pareo_auth_token');
+            localStorage.removeItem('pareo_auth_timestamp');
+            return null;
+        }
+    } else {
+        // If there's a token but no timestamp (e.g. from prior setup), set it now
+        localStorage.setItem('pareo_auth_timestamp', Date.now().toString());
+    }
+    return token;
+}
+
 // Global fetch override for transparent auth handling
 const originalFetch = window.fetch;
 window.fetch = async function (url, options) {
-    const token = localStorage.getItem('pareo_auth_token');
+    const token = getAuthToken();
     
     if (token) {
         let opt = options || {};
@@ -1249,6 +1271,7 @@ async function handleAuthSubmit(event) {
             const data = await res.json();
             if (res.ok && data.token) {
                 localStorage.setItem('pareo_auth_token', data.token);
+                localStorage.setItem('pareo_auth_timestamp', Date.now().toString());
                 document.getElementById('auth-overlay').style.display = 'none';
                 initApp();
             } else {
@@ -1264,6 +1287,7 @@ async function handleAuthSubmit(event) {
             const data = await res.json();
             if (res.ok && data.token) {
                 localStorage.setItem('pareo_auth_token', data.token);
+                localStorage.setItem('pareo_auth_timestamp', Date.now().toString());
                 document.getElementById('auth-overlay').style.display = 'none';
                 initApp();
             } else {
@@ -1279,6 +1303,7 @@ async function handleAuthSubmit(event) {
 
 function logout() {
     localStorage.removeItem('pareo_auth_token');
+    localStorage.removeItem('pareo_auth_timestamp');
     window.location.reload();
 }
 
