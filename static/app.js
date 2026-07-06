@@ -1285,7 +1285,7 @@ function logout() {
 async function initApp() {
     console.log("[Pareo Auth] initApp() verifying session state...");
     try {
-        const response = await originalFetch('/api/auth/verify');
+        const response = await fetch('/api/auth/verify');
         const data = await response.json();
         console.log("[Pareo Auth] /api/auth/verify response data:", data);
         const lockBtn = document.getElementById('btn-lock');
