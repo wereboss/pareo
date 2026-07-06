@@ -1,4 +1,8 @@
 {
+    "allowed_roots": [
+        "/home/sayang",
+        "/Volumes"
+    ],
     "bookmarks": {
         "Ub_Videos": "/home/sayang/Videos/",
         "Torreents": "/home/sayang/Downloads/Tor/",
@@ -10,6 +14,10 @@
             "user": "sayang",
             "host": "192.168.0.112",
             "key_path": "/home/sayang/.ssh/macmini",
+            "allowed_roots": [
+                "/Users/sri",
+                "/Volumes"
+            ],
             "bookmarks": {
                 "MM_Downloads": "/Users/sri/Downloads/",
                 "MM_Eng)Movies": "/Volumes/Server HDD2/VidsMini/Movies/English/",

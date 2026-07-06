@@ -12,6 +12,47 @@ import command_builder
 import database
 import process_manager
 
+def get_allowed_roots(remote_server: Optional[str] = None) -> List[str]:
+    """Retrieves allowed root directories for path restriction from config.json."""
+    config = command_builder.load_config()
+    if remote_server:
+        remotes = config.get("remote_servers", {})
+        if remote_server in remotes:
+            return remotes[remote_server].get("allowed_roots", ["/Users/sri", "/Volumes"])
+        return ["/Users/sri", "/Volumes"]
+    return config.get("allowed_roots", ["/home/sayang", "/Volumes"])
+
+def is_path_allowed(target_path: str, remote_server: Optional[str] = None) -> bool:
+    """Verifies if target_path falls strictly within allowed root folders."""
+    allowed = get_allowed_roots(remote_server)
+    try:
+        normalized = os.path.normpath(target_path)
+        # If it's local, resolve symlinks for extra security
+        if not remote_server:
+            target = Path(target_path)
+            if target.exists():
+                resolved = target.resolve()
+            else:
+                parent = target
+                while not parent.exists():
+                    if parent.parent == parent:
+                        break
+                    parent = parent.parent
+                resolved = parent.resolve()
+            normalized = str(resolved)
+            
+        for root in allowed:
+            root_norm = os.path.normpath(root)
+            try:
+                common = os.path.commonpath([root_norm, normalized])
+                if common == root_norm:
+                    return True
+            except ValueError:
+                pass
+    except Exception:
+        pass
+    return False
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 1. Boot up the SQLite database
@@ -91,10 +132,13 @@ async def execute_ffmpeg(request: FfmpegRequest):
         
     profile_data = profiles[request.profile]
     
-    # Validation 1: Check if the requested mode is allowed by the config
-    if request.mode not in profile_data.get("modes", []):
-        raise HTTPException(status_code=400, detail=f"Profile '{request.profile}' does not support {request.mode} mode.")
-        
+    # Path Validation
+    if not is_path_allowed(request.output_target):
+        raise HTTPException(status_code=403, detail="Access denied: Output path is outside allowed directories.")
+    input_prefix = request.input_target.split('*')[0]
+    if not is_path_allowed(input_prefix):
+        raise HTTPException(status_code=403, detail="Access denied: Input path is outside allowed directories.")
+
     queued_count = 0
     
     if request.mode == "single":
@@ -171,13 +215,33 @@ def list_remote_directory(remote_name: str, target_path: str):
     user = rc.get("user")
     host = rc.get("host")
     key_path = rc.get("key_path")
+    allowed_roots = rc.get("allowed_roots", ["/Users/sri", "/Volumes"])
+    allowed_roots_json = json.dumps(allowed_roots)
     
     # Python one-liner to execute on the remote machine
     remote_python_code = (
-        "import os, json, sys\n"
+        "import os, json, sys, pathlib\n"
         "target = sys.argv[1] if len(sys.argv) > 1 else '/'\n"
+        "roots = json.loads(sys.argv[2])\n"
+        "def is_allowed(p_str):\n"
+        "    try:\n"
+        "        p = pathlib.Path(p_str)\n"
+        "        if p.exists(): resolved = p.resolve()\n"
+        "        else:\n"
+        "            parent = p\n"
+        "            while not parent.exists():\n"
+        "                if parent.parent == parent: break\n"
+        "                parent = parent.parent\n"
+        "            resolved = parent.resolve()\n"
+        "        for r in roots:\n"
+        "            rp = pathlib.Path(r).resolve()\n"
+        "            if rp == resolved or rp in resolved.parents: return True\n"
+        "    except Exception: pass\n"
+        "    return False\n"
         "try:\n"
         "    abs_target = os.path.abspath(target)\n"
+        "    if not is_allowed(abs_target):\n"
+        "        abs_target = os.path.abspath(roots[0])\n"
         "    items = []\n"
         "    if os.path.exists(abs_target) and os.path.isdir(abs_target):\n"
         "        for entry in os.scandir(abs_target):\n"
@@ -189,7 +253,7 @@ def list_remote_directory(remote_name: str, target_path: str):
         "                pass\n"
         "        items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))\n"
         "        parent = os.path.dirname(abs_target)\n"
-        "        if parent == abs_target:\n"
+        "        if parent == abs_target or not is_allowed(parent):\n"
         "            parent = None\n"
         "        print(json.dumps({'success': True, 'target_path': abs_target, 'parent_path': parent, 'items': items}))\n"
         "    else:\n"
@@ -204,7 +268,7 @@ def list_remote_directory(remote_name: str, target_path: str):
         "-o", "StrictHostKeyChecking=no",
         "-i", key_path,
         f"{user}@{host}",
-        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{target_path}\""
+        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{target_path}\" '{allowed_roots_json}'"
     ]
     
     try:
@@ -227,6 +291,7 @@ def list_remote_directory(remote_name: str, target_path: str):
 
 def rename_remote_item(remote_name: str, source_path: str, new_name: str):
     import subprocess
+    import json
     config = command_builder.load_config()
     remotes = config.get("remote_servers", {})
     if remote_name not in remotes:
@@ -236,17 +301,41 @@ def rename_remote_item(remote_name: str, source_path: str, new_name: str):
     user = rc.get("user")
     host = rc.get("host")
     key_path = rc.get("key_path")
+    allowed_roots = rc.get("allowed_roots", ["/Users/sri", "/Volumes"])
+    allowed_roots_json = json.dumps(allowed_roots)
     
     remote_code = (
-        "import os, sys\n"
+        "import os, sys, pathlib, json\n"
         "src = sys.argv[1]\n"
         "new_name = sys.argv[2]\n"
+        "roots = json.loads(sys.argv[3])\n"
+        "def is_allowed(p_str):\n"
+        "    try:\n"
+        "        p = pathlib.Path(p_str)\n"
+        "        if p.exists(): resolved = p.resolve()\n"
+        "        else:\n"
+        "            parent = p\n"
+        "            while not parent.exists():\n"
+        "                if parent.parent == parent: break\n"
+        "                parent = parent.parent\n"
+        "            resolved = parent.resolve()\n"
+        "        for r in roots:\n"
+        "            rp = pathlib.Path(r).resolve()\n"
+        "            if rp == resolved or rp in resolved.parents: return True\n"
+        "    except Exception: pass\n"
+        "    return False\n"
         "try:\n"
+        "    if not is_allowed(src):\n"
+        "        print('403: Forbidden path')\n"
+        "        sys.exit(4)\n"
         "    if not os.path.exists(src):\n"
         "        print('404: Source not found')\n"
         "        sys.exit(1)\n"
         "    parent = os.path.dirname(src)\n"
         "    dest = os.path.join(parent, new_name)\n"
+        "    if not is_allowed(dest):\n"
+        "        print('403: Forbidden destination path')\n"
+        "        sys.exit(5)\n"
         "    if os.path.exists(dest):\n"
         "        print('400: Destination exists')\n"
         "        sys.exit(2)\n"
@@ -263,7 +352,7 @@ def rename_remote_item(remote_name: str, source_path: str, new_name: str):
         "-o", "StrictHostKeyChecking=no",
         "-i", key_path,
         f"{user}@{host}",
-        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{source_path}\" \"{new_name}\""
+        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{source_path}\" \"{new_name}\" '{allowed_roots_json}'"
     ]
     
     try:
@@ -274,6 +363,8 @@ def rename_remote_item(remote_name: str, source_path: str, new_name: str):
             raise HTTPException(status_code=404, detail="Source file or folder not found on remote server.")
         elif proc.returncode == 2:
             raise HTTPException(status_code=400, detail="A file or folder with the new name already exists on remote server.")
+        elif proc.returncode in (4, 5):
+            raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed directories.")
         elif proc.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to rename on remote: {output} {proc.stderr}")
             
@@ -287,6 +378,14 @@ def rename_remote_item(remote_name: str, source_path: str, new_name: str):
 @app.get("/api/fs/list")
 def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
     """Returns a JSON array of files and folders for the Explorer Modal."""
+    allowed = get_allowed_roots(remote_server)
+    if not allowed:
+        raise HTTPException(status_code=500, detail="Allowed roots not configured.")
+        
+    # If client requests root or empty or not allowed, redirect to the first allowed root
+    if target_path == "/" or not target_path or not is_path_allowed(target_path, remote_server):
+        target_path = allowed[0]
+        
     if remote_server:
         return list_remote_directory(remote_server, target_path)
         
@@ -325,11 +424,13 @@ def rename_fs_item(request: RenameRequest):
         return rename_remote_item(request.remote_server, request.source_path, request.new_name)
         
     src = Path(request.source_path)
+    dest = src.parent / request.new_name
+    
+    if not is_path_allowed(str(src)) or not is_path_allowed(str(dest)):
+        raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed directories.")
+        
     if not src.exists():
         raise HTTPException(status_code=404, detail="Source file or folder not found.")
-        
-    # Construct the destination path in the same parent directory
-    dest = src.parent / request.new_name
     
     if dest.exists():
         raise HTTPException(status_code=400, detail="A file or folder with the new name already exists.")
@@ -363,6 +464,22 @@ async def execute_fs_action(request: FsRequest):
             raise HTTPException(status_code=400, detail="A valid Remote Server must be selected for this action.")
         remote_creds = remotes_config[request.remote_server]
         
+    # Path Validation
+    if request.destination_path:
+        dest_server = None
+        if action_data.get("requires_remote") and request.remote_server:
+            dest_server = request.remote_server
+        elif request.source_server and not action_data.get("requires_remote"):
+            dest_server = request.source_server
+            
+        if not is_path_allowed(request.destination_path, dest_server):
+            raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed directories.")
+            
+    src_server = request.source_server if request.source_server else None
+    for src in request.source_paths:
+        if not is_path_allowed(src, src_server):
+            raise HTTPException(status_code=403, detail="Access denied: Source path is outside allowed directories.")
+
     queued_count = 0
     for src in request.source_paths:
         if request.source_server:
@@ -519,6 +636,17 @@ async def execute_generic(request: GenericTaskRequest):
         raise HTTPException(status_code=404, detail="Generic card configuration not found.")
         
     card_config = cards[request.card_name]
+    
+    # Path validation for generic card inputs
+    inputs_schema = card_config.get("inputs", [])
+    for inp in inputs_schema:
+        inp_id = inp.get("id")
+        inp_type = inp.get("type")
+        if inp_type in ("directory", "file") and inp_id in request.inputs:
+            val = str(request.inputs[inp_id])
+            if not is_path_allowed(val):
+                raise HTTPException(status_code=403, detail=f"Access denied: Input '{inp_id}' path is outside allowed directories.")
+
     template = card_config.get("command_template", "")
     queue_name = card_config.get("task_type", "default")
     batch_size = card_config.get("batch_size")
