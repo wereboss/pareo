@@ -1873,7 +1873,7 @@ function createLibraryRow(item) {
     // Backup Action
     if (item.status === 'only_source' || item.status === 'pending_sync') {
         actionButtons += `
-            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'backup')" title="Back Up to Backup Location" style="color: var(--cyan); margin-left: 6px;">
+            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'backup')" title="Back Up to Backup Location" style="color: var(--orange); margin-left: 6px;">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 3v12"></path><polyline points="8 7 12 3 16 7"></polyline></svg>
             </button>
         `;
@@ -1882,7 +1882,7 @@ function createLibraryRow(item) {
     // Download/Restore Action
     if (item.status === 'only_backup' || item.status === 'pending_sync') {
         actionButtons += `
-            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'restore')" title="Download to Source Location" style="color: var(--orange); margin-left: 6px;">
+            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'restore')" title="Download to Source Location" style="color: var(--cyan); margin-left: 6px;">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 15V3"></path><polyline points="16 11 12 15 8 11"></polyline></svg>
             </button>
         `;
