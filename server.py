@@ -80,13 +80,18 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Pareo API", lifespan=lifespan)
 
 # --- AUTHENTICATION SYSTEM ---
-class PasswordSetupRequest(BaseModel):
-    password_hash: str
+import hashlib
+
+class PasswordAuthRequest(BaseModel):
+    password: str
+
+def hash_password(password: str) -> str:
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
     path = request.url.path
-    if not path.startswith("/api") or path in ("/api/auth/setup", "/api/auth/verify"):
+    if not path.startswith("/api") or path in ("/api/auth/setup", "/api/auth/verify", "/api/auth/login"):
         return await call_next(request)
         
     config = command_builder.load_config()
@@ -117,18 +122,34 @@ def verify_auth(request: Request):
     return {"status": "unauthorized"}
 
 @app.post("/api/auth/setup")
-def setup_password(req: PasswordSetupRequest):
+def setup_password(req: PasswordAuthRequest):
     """Saves the initial master password hash to config.json."""
     config = command_builder.load_config()
     if config.get("master_password_hash"):
         raise HTTPException(status_code=400, detail="Master password is already configured.")
         
-    config["master_password_hash"] = req.password_hash
+    password_hash = hash_password(req.password)
+    config["master_password_hash"] = password_hash
     import json
     with open('config.json', 'w') as f:
         json.dump(config, f, indent=4)
         
-    return {"message": "Master password successfully configured."}
+    return {"message": "Master password successfully configured.", "token": password_hash}
+
+@app.post("/api/auth/login")
+def login_auth(req: PasswordAuthRequest):
+    """Verifies credentials and returns the authorization token."""
+    config = command_builder.load_config()
+    master_hash = config.get("master_password_hash")
+    
+    if not master_hash:
+        raise HTTPException(status_code=400, detail="Authentication is not configured yet.")
+        
+    password_hash = hash_password(req.password)
+    if password_hash == master_hash:
+        return {"status": "authorized", "token": password_hash}
+        
+    raise HTTPException(status_code=401, detail="Incorrect password.")
 
 class GenericTaskRequest(BaseModel):
     card_name: str
@@ -819,6 +840,334 @@ def get_monitored_process_logs(name: str, lines: Optional[int] = 100):
     
     content = process_manager.read_last_lines(log_file, lines)
     return {"name": name, "logs": content}
+
+
+# --- FOLDER LIBRARIES SYSTEM ---
+
+class LibrarySyncRequest(BaseModel):
+    library_name: str
+    relative_path: str
+    direction: str # "backup" or "restore"
+
+def get_local_library_metadata(base_path: str, subpath: str, deep_scan: bool = False) -> dict:
+    import os
+    from pathlib import Path
+    target_path = Path(base_path) / subpath
+    try:
+        target_path = target_path.resolve()
+    except Exception:
+        pass
+    
+    if not is_path_allowed(str(target_path), None):
+        raise Exception(f"Access denied: Path '{target_path}' is outside allowed directories.")
+        
+    if not target_path.exists() or not target_path.is_dir():
+        return {}
+        
+    result = {}
+    if deep_scan:
+        for root, dirs, files in os.walk(str(target_path)):
+            for name in dirs + files:
+                full_path = Path(root) / name
+                try:
+                    rel_path = full_path.relative_to(target_path).as_posix()
+                    is_dir = full_path.is_dir()
+                    stat = full_path.stat()
+                    size = stat.st_size if not is_dir else 0
+                    mtime = stat.st_mtime
+                    result[rel_path] = {
+                        "name": name,
+                        "is_dir": is_dir,
+                        "size": size,
+                        "mtime": mtime,
+                        "path": str(full_path.absolute())
+                    }
+                except Exception:
+                    pass
+    else:
+        for entry in os.scandir(str(target_path)):
+            try:
+                is_dir = entry.is_dir()
+                stat = entry.stat()
+                size = stat.st_size if not is_dir else 0
+                mtime = stat.st_mtime
+                result[entry.name] = {
+                    "name": entry.name,
+                    "is_dir": is_dir,
+                    "size": size,
+                    "mtime": mtime,
+                    "path": entry.path
+                }
+            except Exception:
+                pass
+    return result
+
+def get_remote_library_metadata(remote_server: str, base_path: str, subpath: str, deep_scan: bool = False) -> dict:
+    import subprocess
+    import json
+    config = command_builder.load_config()
+    remotes = config.get("remote_servers", {})
+    if remote_server not in remotes:
+        raise Exception(f"Remote server '{remote_server}' not configured.")
+        
+    rc = remotes[remote_server]
+    user = rc.get("user")
+    host = rc.get("host")
+    key_path = rc.get("key_path")
+    allowed_roots = rc.get("allowed_roots", ["/Users/sri", "/Volumes"])
+    allowed_roots_json = json.dumps(allowed_roots)
+    
+    remote_python_code = (
+        "import os, json, sys, pathlib\n"
+        "base_path = sys.argv[1]\n"
+        "subpath = sys.argv[2]\n"
+        "roots = json.loads(sys.argv[3])\n"
+        "deep_scan = sys.argv[4].lower() == 'true'\n"
+        "def is_allowed(p_str):\n"
+        "    try:\n"
+        "        p = pathlib.Path(p_str)\n"
+        "        if p.exists(): resolved = p.resolve()\n"
+        "        else:\n"
+        "            parent = p\n"
+        "            while not parent.exists():\n"
+        "                if parent.parent == parent: break\n"
+        "                parent = parent.parent\n"
+        "            resolved = parent.resolve()\n"
+        "        for r in roots:\n"
+        "            rp = pathlib.Path(r).resolve()\n"
+        "            if rp == resolved or rp in resolved.parents: return True\n"
+        "    except Exception: pass\n"
+        "    return False\n"
+        "try:\n"
+        "    target_path = os.path.join(base_path, subpath)\n"
+        "    p = pathlib.Path(target_path)\n"
+        "    abs_target = str(p.resolve() if p.exists() else p)\n"
+        "    if not is_allowed(abs_target):\n"
+        "        print(json.dumps({'success': False, 'error': 'Path outside allowed roots'}))\n"
+        "        sys.exit(0)\n"
+        "    result = {}\n"
+        "    if not os.path.exists(abs_target) or not os.path.isdir(abs_target):\n"
+        "        print(json.dumps({'success': True, 'metadata': {}}))\n"
+        "        sys.exit(0)\n"
+        "    if deep_scan:\n"
+        "        for root, dirs, files in os.walk(abs_target):\n"
+        "            for name in dirs + files:\n"
+        "                full = os.path.join(root, name)\n"
+        "                rel = str(pathlib.Path(full).relative_to(abs_target).as_posix())\n"
+        "                is_d = os.path.isdir(full)\n"
+        "                try:\n"
+        "                    st = os.stat(full)\n"
+        "                    size = st.st_size if not is_d else 0\n"
+        "                    mtime = st.st_mtime\n"
+        "                except Exception:\n"
+        "                    size = 0\n"
+        "                    mtime = 0\n"
+        "                result[rel] = {'name': name, 'is_dir': is_d, 'size': size, 'mtime': mtime, 'path': full}\n"
+        "    else:\n"
+        "        with os.scandir(abs_target) as it:\n"
+        "            for entry in it:\n"
+        "                try:\n"
+        "                    is_d = entry.is_dir()\n"
+        "                    st = entry.stat()\n"
+        "                    size = st.st_size if not is_d else 0\n"
+        "                    mtime = st.st_mtime\n"
+        "                    result[entry.name] = {'name': entry.name, 'is_dir': is_d, 'size': size, 'mtime': mtime, 'path': entry.path}\n"
+        "                except Exception:\n"
+        "                    pass\n"
+        "    print(json.dumps({'success': True, 'metadata': result}))\n"
+        "except Exception as e:\n"
+        "    print(json.dumps({'success': False, 'error': str(e)}))\n"
+    )
+    
+    escaped_code = remote_python_code.replace('"', '\\"').replace('$', '\\$')
+    ssh_cmd = [
+        "ssh",
+        "-o", "StrictHostKeyChecking=no",
+        "-i", key_path,
+        f"{user}@{host}",
+        f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{base_path}\" \"{subpath}\" '{allowed_roots_json}' '{str(deep_scan)}'"
+    ]
+    
+    proc = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20.0)
+    if proc.returncode != 0:
+        raise Exception(f"SSH command failed: {proc.stderr}")
+        
+    res = json.loads(proc.stdout.strip())
+    if not res.get("success"):
+        raise Exception(res.get("error", "Unknown remote error"))
+        
+    return res.get("metadata", {})
+
+def get_library_union(source_meta: dict, backup_meta: dict) -> list:
+    union_keys = set(source_meta.keys()).union(set(backup_meta.keys()))
+    items = []
+    
+    for key in union_keys:
+        src = source_meta.get(key)
+        bk = backup_meta.get(key)
+        
+        name = src["name"] if src else bk["name"]
+        is_dir = src["is_dir"] if src else bk["is_dir"]
+        
+        if src and not bk:
+            status = "only_source"
+        elif bk and not src:
+            status = "only_backup"
+        else:
+            if is_dir:
+                status = "synced"
+            else:
+                size_match = src["size"] == bk["size"]
+                time_match = abs(src["mtime"] - bk["mtime"]) < 2.0
+                if size_match and time_match:
+                    status = "synced"
+                else:
+                    status = "pending_sync"
+                    
+        items.append({
+            "relative_path": key,
+            "name": name,
+            "is_dir": is_dir,
+            "source_exists": src is not None,
+            "backup_exists": bk is not None,
+            "status": status,
+            "source_size": src["size"] if src else None,
+            "backup_size": bk["size"] if bk else None,
+            "source_path": src["path"] if src else None,
+            "backup_path": bk["path"] if bk else None,
+        })
+        
+    items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
+    return items
+
+@app.get("/api/libraries")
+def list_libraries():
+    """Returns all configured folder libraries."""
+    config = command_builder.load_config()
+    return config.get("libraries", {})
+
+@app.get("/api/libraries/browse")
+def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False):
+    """Gathers sync comparison for a library's source and backup folders."""
+    config = command_builder.load_config()
+    libraries = config.get("libraries", {})
+    if library_name not in libraries:
+        raise HTTPException(status_code=404, detail="Library not configured.")
+        
+    lib = libraries[library_name]
+    src_cfg = lib.get("source")
+    bk_cfg = lib.get("backup")
+    
+    if not src_cfg or not bk_cfg:
+        raise HTTPException(status_code=400, detail="Library source and backup settings must be configured.")
+        
+    # Get source metadata
+    try:
+        if src_cfg["server"] == "local":
+            src_meta = get_local_library_metadata(src_cfg["path"], subpath, deep_scan)
+        else:
+            src_meta = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Source listing failed: {str(e)}")
+        
+    # Get backup metadata
+    try:
+        if bk_cfg["server"] == "local":
+            bk_meta = get_local_library_metadata(bk_cfg["path"], subpath, deep_scan)
+        else:
+            bk_meta = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Backup listing failed: {str(e)}")
+        
+    union_items = get_library_union(src_meta, bk_meta)
+    
+    # If it is a deep_scan, filter out synced items
+    if deep_scan:
+        union_items = [item for item in union_items if item["status"] != "synced"]
+        
+    return {
+        "library_name": library_name,
+        "subpath": subpath,
+        "deep_scan": deep_scan,
+        "items": union_items
+    }
+
+@app.post("/api/libraries/sync")
+async def sync_library_item(request: LibrarySyncRequest):
+    """Queues a file copy task to align source and backup repositories."""
+    config = command_builder.load_config()
+    libraries = config.get("libraries", {})
+    remotes = config.get("remote_servers", {})
+    
+    if request.library_name not in libraries:
+        raise HTTPException(status_code=404, detail="Library not configured.")
+        
+    lib = libraries[request.library_name]
+    src_cfg = lib.get("source")
+    bk_cfg = lib.get("backup")
+    
+    if request.direction == "backup":
+        from_cfg = src_cfg
+        to_cfg = bk_cfg
+    else:
+        from_cfg = bk_cfg
+        to_cfg = src_cfg
+        
+    import os
+    from pathlib import Path
+    
+    item_rel_path = request.relative_path.replace("\\", "/")
+    
+    src_base = from_cfg["path"].rstrip("/")
+    dst_base = to_cfg["path"].rstrip("/")
+    
+    src_full = f"{src_base}/{item_rel_path}"
+    dst_full = f"{dst_base}/{item_rel_path}"
+    
+    if not is_path_allowed(src_full, None if from_cfg["server"] == "local" else from_cfg["server"]):
+        raise HTTPException(status_code=403, detail="Access denied: Source path is outside allowed roots.")
+    if not is_path_allowed(dst_full, None if to_cfg["server"] == "local" else to_cfg["server"]):
+        raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed roots.")
+        
+    dst_parent = "/".join(dst_full.split("/")[:-1])
+    
+    if to_cfg["server"] == "local":
+        os.makedirs(dst_parent, exist_ok=True)
+    else:
+        if to_cfg["server"] not in remotes:
+            raise HTTPException(status_code=400, detail="Destination remote server not configured.")
+        rc = remotes[to_cfg["server"]]
+        user = rc.get("user")
+        host = rc.get("host")
+        key_path = rc.get("key_path")
+        mkdir_cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
+            f"{user}@{host}", f"mkdir -p '{dst_parent}'"
+        ]
+        import subprocess
+        subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    if from_cfg["server"] == "local" and to_cfg["server"] == "local":
+        cmd = f'cp -r "{src_full}" "{dst_parent}/"'
+    elif from_cfg["server"] == "local" and to_cfg["server"] != "local":
+        rc = remotes[to_cfg["server"]]
+        user = rc.get("user")
+        host = rc.get("host")
+        key_path = rc.get("key_path")
+        cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r "{src_full}" {user}@{host}:"{dst_parent}/"'
+    elif from_cfg["server"] != "local" and to_cfg["server"] == "local":
+        rc = remotes[from_cfg["server"]]
+        user = rc.get("user")
+        host = rc.get("host")
+        key_path = rc.get("key_path")
+        cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src_full}" "{dst_parent}/"'
+    else:
+        rc_from = remotes[from_cfg["server"]]
+        rc_to = remotes[to_cfg["server"]]
+        cmd = f'ssh -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" {rc_from.get("user")}@{rc_from.get("host")} "scp -o StrictHostKeyChecking=no -r \\"{src_full}\\" {rc_to.get("user")}@{rc_to.get("host")}:\\"{dst_parent}/\\""'
+        
+    await executor.start_task(cmd, queue_name="fs")
+    return {"message": "Sync copy task queued successfully.", "command": cmd}
 
     # THIS MUST BE THE VERY LAST THING IN THE FILE
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

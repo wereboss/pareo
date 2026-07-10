@@ -23,6 +23,7 @@
         <div class="nav-links">
             <button id="btn-tasks" class="nav-btn active" onclick="switchTab('tasks')">Tasks Queue</button>
             <button id="btn-utilities" class="nav-btn" onclick="switchTab('utilities')">Utilities</button>
+            <button id="btn-libraries" class="nav-btn" onclick="switchTab('libraries')">Libraries</button>
         </div>
     </nav>
     
@@ -171,6 +172,55 @@
                             <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-libraries" style="display: none;">
+            <h3>Folder Libraries</h3>
+            
+            <!-- Grid list of libraries -->
+            <div id="libraries-list-container" class="card">
+                <h4 style="margin-top: 0;">Select a Library</h4>
+                <div id="libraries-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+                    <!-- Library cards will be rendered here dynamically -->
+                </div>
+            </div>
+
+            <!-- Library detailed sync view (hidden by default) -->
+            <div id="library-detail-container" class="card" style="display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <button class="btn btn-sm" onclick="showLibrariesList()" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold;">← Libraries</button>
+                        <h4 id="library-detail-title" style="margin: 0;">Library Sync Details</h4>
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="text" id="library-search" oninput="filterLibraryItems()" placeholder="Search library items..." style="padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan); width: 200px;">
+                        <button id="btn-library-deep-scan" class="btn btn-sm" onclick="triggerLibraryDeepScan()" style="padding: 6px 12px; font-weight: bold; background: var(--yellow) !important; color: var(--base03) !important; border: none;">Deep Sync Scan</button>
+                    </div>
+                </div>
+
+                <!-- Breadcrumbs -->
+                <div id="library-breadcrumbs" style="padding: 8px 12px; background: var(--base02); border: 1px solid var(--base01); border-radius: 4px; margin-bottom: 15px; font-family: monospace; font-size: 0.9em; display: flex; gap: 8px; align-items: center;">
+                    <!-- Breadcrumbs will be rendered here -->
+                </div>
+
+                <!-- File listing table -->
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.92em;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--base01); color: var(--base1);">
+                                <th style="padding: 10px;">Name</th>
+                                <th style="padding: 10px;">Status</th>
+                                <th style="padding: 10px;">Source Size</th>
+                                <th style="padding: 10px;">Backup Size</th>
+                                <th style="padding: 10px; text-align: right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="library-items-table-body">
+                            <!-- Items will be rendered here dynamically -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

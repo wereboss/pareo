@@ -94,8 +94,10 @@ function switchTab(tabId) {
     // 2. Hide ALL content wrappers
     const tabTasks = document.getElementById('tab-tasks');
     const tabUtils = document.getElementById('tab-utilities');
+    const tabLibs = document.getElementById('tab-libraries');
     if (tabTasks) tabTasks.style.display = 'none';
     if (tabUtils) tabUtils.style.display = 'none';
+    if (tabLibs) tabLibs.style.display = 'none';
 
     // 3. Highlight the clicked button
     const activeBtn = document.getElementById(`btn-${tabId}`);
@@ -116,6 +118,10 @@ function switchTab(tabId) {
             clearInterval(processPollInterval);
             processPollInterval = null;
         }
+    }
+    
+    if (tabId === 'libraries') {
+        fetchLibrariesList();
     }
 }
 
@@ -1568,4 +1574,344 @@ function closeProcessLogsModal() {
         clearInterval(logRefreshInterval);
         logRefreshInterval = null;
     }
+}
+
+// --- FOLDER LIBRARIES FRONTEND ---
+let currentLibraryName = "";
+let currentLibrarySubpath = "";
+let currentLibraryItems = [];
+
+async function fetchLibrariesList() {
+    showLoading(40);
+    try {
+        const response = await fetch('/api/libraries');
+        if (!response.ok) {
+            console.error("Failed to load libraries config");
+            return;
+        }
+        const libraries = await response.json();
+        renderLibrariesGrid(libraries);
+    } catch (error) {
+        console.error("Error fetching libraries list:", error);
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderLibrariesGrid(libraries) {
+    const grid = document.getElementById('libraries-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const keys = Object.keys(libraries);
+    if (keys.length === 0) {
+        grid.innerHTML = '<div style="color: var(--base1); grid-column: 1/-1; text-align: center; padding: 20px;">No folder libraries configured in config.json.</div>';
+        return;
+    }
+
+    keys.forEach(name => {
+        const lib = libraries[name];
+        const card = document.createElement('div');
+        card.className = 'library-card';
+        card.style.cssText = `
+            background: var(--base02);
+            border: 1px solid var(--base01);
+            border-radius: 8px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        `;
+        card.addEventListener('mouseenter', () => {
+            card.style.borderColor = 'var(--cyan)';
+            card.style.transform = 'translateY(-2px)';
+        });
+        card.addEventListener('mouseleave', () => {
+            card.style.borderColor = 'var(--base01)';
+            card.style.transform = 'translateY(0)';
+        });
+        card.onclick = () => openLibrary(name);
+
+        card.innerHTML = `
+            <h4 style="margin: 0 0 15px 0; color: var(--cyan); display: flex; align-items: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                ${name}
+            </h4>
+            <div style="font-size: 0.85em; display: flex; flex-direction: column; gap: 8px; color: var(--base0);">
+                <div>
+                    <strong style="color: var(--base1);">Source:</strong>
+                    <span style="font-family: monospace; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
+                        [${lib.source.server}] ${lib.source.path}
+                    </span>
+                </div>
+                <div>
+                    <strong style="color: var(--base1);">Backup:</strong>
+                    <span style="font-family: monospace; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
+                        [${lib.backup.server}] ${lib.backup.path}
+                    </span>
+                </div>
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function showLibrariesList() {
+    document.getElementById('libraries-list-container').style.display = 'block';
+    document.getElementById('library-detail-container').style.display = 'none';
+    currentLibraryName = "";
+    currentLibrarySubpath = "";
+    currentLibraryItems = [];
+}
+
+async function openLibrary(name, subpath = "", deepScan = false) {
+    currentLibraryName = name;
+    currentLibrarySubpath = subpath;
+    
+    document.getElementById('libraries-list-container').style.display = 'none';
+    const detailContainer = document.getElementById('library-detail-container');
+    detailContainer.style.display = 'block';
+    
+    document.getElementById('library-detail-title').textContent = `${name}`;
+    document.getElementById('library-search').value = "";
+    
+    // Toggle deep scan styling
+    const scanBtn = document.getElementById('btn-library-deep-scan');
+    if (deepScan) {
+        scanBtn.textContent = "Exit Deep Scan";
+        scanBtn.style.background = "var(--red)";
+        scanBtn.style.color = "#fff";
+        scanBtn.onclick = () => openLibrary(name, subpath, false);
+    } else {
+        scanBtn.textContent = "Deep Sync Scan";
+        scanBtn.style.background = "var(--yellow)";
+        scanBtn.style.color = "var(--base03)";
+        scanBtn.onclick = () => openLibrary(name, subpath, true);
+    }
+
+    renderLibraryBreadcrumbs();
+    await fetchLibraryItems(deepScan);
+}
+
+function renderLibraryBreadcrumbs() {
+    const container = document.getElementById('library-breadcrumbs');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const rootLink = document.createElement('span');
+    rootLink.textContent = 'Root';
+    rootLink.style.cssText = 'cursor: pointer; color: var(--cyan); font-weight: bold;';
+    rootLink.onclick = () => openLibrary(currentLibraryName, "");
+    container.appendChild(rootLink);
+
+    if (currentLibrarySubpath) {
+        const parts = currentLibrarySubpath.split('/');
+        let pathAccumulator = "";
+        parts.forEach((part, index) => {
+            if (!part) return;
+            pathAccumulator += (index === 0 ? '' : '/') + part;
+            
+            const divider = document.createElement('span');
+            divider.textContent = ' / ';
+            divider.style.color = 'var(--base01)';
+            container.appendChild(divider);
+
+            const segmentLink = document.createElement('span');
+            segmentLink.textContent = part;
+            segmentLink.style.cssText = 'cursor: pointer; color: var(--cyan);';
+            const targetPath = pathAccumulator;
+            segmentLink.onclick = () => openLibrary(currentLibraryName, targetPath);
+            container.appendChild(segmentLink);
+        });
+    }
+}
+
+async function fetchLibraryItems(deepScan = false) {
+    showLoading(50);
+    const tbody = document.getElementById('library-items-table-body');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--base1);">Scanning folders and aligning metadata...</td></tr>';
+    
+    try {
+        const url = `/api/libraries/browse?library_name=${encodeURIComponent(currentLibraryName)}&subpath=${encodeURIComponent(currentLibrarySubpath)}&deep_scan=${deepScan}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            const err = await response.json();
+            alert(`Browse failed: ${err.detail}`);
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--red); padding: 20px;">Error: ${err.detail}</td></tr>`;
+            return;
+        }
+        const data = await response.json();
+        currentLibraryItems = data.items || [];
+        renderLibraryItems(currentLibraryItems);
+    } catch (error) {
+        console.error("Error loading library items:", error);
+    } finally {
+        hideLoading();
+    }
+}
+
+function formatSize(size) {
+    if (size === null || size === undefined) return '-';
+    return (size / 1024 / 1024).toFixed(2) + " MB";
+}
+
+function renderLibraryItems(items) {
+    const tbody = document.getElementById('library-items-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--base1);">No discrepancies found (All identical).</td></tr>';
+        return;
+    }
+
+    items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid var(--base02)';
+        
+        // Icon and Name
+        const nameCell = document.createElement('td');
+        nameCell.style.padding = '10px';
+        nameCell.style.verticalAlign = 'middle';
+        
+        const isDir = item.is_dir;
+        const iconHtml = isDir 
+            ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--blue); vertical-align: middle; margin-right: 8px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`
+            : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--base1); vertical-align: middle; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
+            
+        const nameSpan = document.createElement('span');
+        nameSpan.innerHTML = iconHtml + (isDir ? `<span style="font-weight: bold; color: var(--cyan); cursor: pointer;">${item.name}</span>` : item.name);
+        
+        if (isDir) {
+            nameSpan.onclick = () => {
+                const nextSubpath = currentLibrarySubpath 
+                    ? `${currentLibrarySubpath}/${item.relative_path}`
+                    : item.relative_path;
+                openLibrary(currentLibraryName, nextSubpath);
+            };
+        }
+        nameCell.appendChild(nameSpan);
+        tr.appendChild(nameCell);
+
+        // Status Badge
+        const statusCell = document.createElement('td');
+        statusCell.style.padding = '10px';
+        statusCell.style.verticalAlign = 'middle';
+        
+        let statusBadge = "";
+        if (item.status === 'synced') {
+            statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Synced</span>';
+        } else if (item.status === 'only_source') {
+            statusBadge = '<span style="background: #3498db33; color: #3498db; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Source</span>';
+        } else if (item.status === 'only_backup') {
+            statusBadge = '<span style="background: #e67e2233; color: #e67e22; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Backup</span>';
+        } else if (item.status === 'pending_sync') {
+            statusBadge = '<span style="background: #f1c40f33; color: #f1c40f; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Pending Sync</span>';
+        }
+        statusCell.innerHTML = statusBadge;
+        tr.appendChild(statusCell);
+
+        // Sizes
+        const srcSizeCell = document.createElement('td');
+        srcSizeCell.style.padding = '10px';
+        srcSizeCell.style.verticalAlign = 'middle';
+        srcSizeCell.textContent = item.source_exists && !isDir ? formatSize(item.source_size) : '-';
+        tr.appendChild(srcSizeCell);
+
+        const bkSizeCell = document.createElement('td');
+        bkSizeCell.style.padding = '10px';
+        bkSizeCell.style.verticalAlign = 'middle';
+        bkSizeCell.textContent = item.backup_exists && !isDir ? formatSize(item.backup_size) : '-';
+        tr.appendChild(bkSizeCell);
+
+        // Actions
+        const actionsCell = document.createElement('td');
+        actionsCell.style.padding = '10px';
+        actionsCell.style.textAlign = 'right';
+        actionsCell.style.verticalAlign = 'middle';
+        
+        let actionButtons = '';
+        if (item.status === 'only_source' || item.status === 'pending_sync') {
+            actionButtons += `<button class="btn btn-sm" onclick="syncItem('${item.relative_path}', 'backup')" style="padding: 4px 8px; font-size: 0.85em; font-weight: bold; background: var(--cyan) !important; color: var(--base03) !important; border: none; margin-left: 5px;">Back Up</button>`;
+        }
+        if (item.status === 'only_backup' || item.status === 'pending_sync') {
+            actionButtons += `<button class="btn btn-sm" onclick="syncItem('${item.relative_path}', 'restore')" style="padding: 4px 8px; font-size: 0.85em; font-weight: bold; background: var(--orange) !important; color: var(--base03) !important; border: none; margin-left: 5px;">Download</button>`;
+        }
+        actionsCell.innerHTML = actionButtons;
+        tr.appendChild(actionsCell);
+
+        tbody.appendChild(tr);
+    });
+}
+
+function filterLibraryItems() {
+    const query = document.getElementById('library-search').value.toLowerCase().trim();
+    if (!query) {
+        renderLibraryItems(currentLibraryItems);
+        return;
+    }
+    const filtered = currentLibraryItems.filter(item => 
+        item.name.toLowerCase().includes(query) || 
+        item.relative_path.toLowerCase().includes(query)
+    );
+    renderLibraryItems(filtered);
+}
+
+async function syncItem(relativePath, direction) {
+    showLoading(30);
+    try {
+        const response = await fetch('/api/libraries/sync', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                library_name: currentLibraryName,
+                relative_path: relativePath,
+                direction: direction
+            })
+        });
+        
+        if (response.ok) {
+            updateTaskTicker();
+            const actionText = direction === 'backup' ? 'Backup copy' : 'Restore download';
+            showTemporarySyncToast(`${actionText} task queued successfully in Queue runner.`);
+        } else {
+            const err = await response.json();
+            alert(`Sync failed: ${err.detail}`);
+        }
+    } catch (error) {
+        console.error("Error executing sync task:", error);
+    } finally {
+        hideLoading();
+    }
+}
+
+function showTemporarySyncToast(message) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        background: #25d366;
+        color: #fff;
+        padding: 12px 24px;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        z-index: 100000;
+        font-weight: bold;
+        font-size: 0.9em;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '1';
+    }, 50);
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => {
+            document.body.removeChild(toast);
+        }, 300);
+    }, 4000);
 }
