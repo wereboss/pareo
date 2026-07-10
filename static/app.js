@@ -1828,6 +1828,7 @@ function renderLibraryItems(items) {
         actionsCell.style.padding = '10px';
         actionsCell.style.textAlign = 'right';
         actionsCell.style.verticalAlign = 'middle';
+        actionsCell.style.whiteSpace = 'nowrap';
         
         let actionButtons = '';
         if (item.status === 'only_source' || item.status === 'pending_sync') {

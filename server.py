@@ -1164,7 +1164,7 @@ async def sync_library_item(request: LibrarySyncRequest):
     else:
         rc_from = remotes[from_cfg["server"]]
         rc_to = remotes[to_cfg["server"]]
-        cmd = f'ssh -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" {rc_from.get("user")}@{rc_from.get("host")} "scp -o StrictHostKeyChecking=no -r \\"{src_full}\\" {rc_to.get("user")}@{rc_to.get("host")}:\\"{dst_parent}/\\""'
+        cmd = f'scp -3 -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" -i "{rc_to.get("key_path")}" -r {rc_from.get("user")}@{rc_from.get("host")}:"{src_full}" {rc_to.get("user")}@{rc_to.get("host")}:"{dst_parent}/"'
         
     await executor.start_task(cmd, queue_name="fs")
     return {"message": "Sync copy task queued successfully.", "command": cmd}
