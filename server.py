@@ -870,7 +870,9 @@ def get_local_library_metadata(base_path: str, subpath: str, deep_scan: bool = F
             for name in dirs + files:
                 full_path = Path(root) / name
                 try:
-                    rel_path = full_path.relative_to(target_path).as_posix()
+                    full_resolved = full_path.resolve()
+                    target_resolved = target_path.resolve()
+                    rel_path = full_resolved.relative_to(target_resolved).as_posix()
                     is_dir = full_path.is_dir()
                     stat = full_path.stat()
                     size = stat.st_size if not is_dir else 0
@@ -952,17 +954,22 @@ def get_remote_library_metadata(remote_server: str, base_path: str, subpath: str
         "    if deep_scan:\n"
         "        for root, dirs, files in os.walk(abs_target):\n"
         "            for name in dirs + files:\n"
-        "                full = os.path.join(root, name)\n"
-        "                rel = str(pathlib.Path(full).relative_to(abs_target).as_posix())\n"
-        "                is_d = os.path.isdir(full)\n"
         "                try:\n"
-        "                    st = os.stat(full)\n"
-        "                    size = st.st_size if not is_d else 0\n"
-        "                    mtime = st.st_mtime\n"
+        "                    full = os.path.join(root, name)\n"
+        "                    full_resolved = pathlib.Path(full).resolve()\n"
+        "                    target_resolved = pathlib.Path(abs_target).resolve()\n"
+        "                    rel = str(full_resolved.relative_to(target_resolved).as_posix())\n"
+        "                    is_d = os.path.isdir(full)\n"
+        "                    try:\n"
+        "                        st = os.stat(full)\n"
+        "                        size = st.st_size if not is_d else 0\n"
+        "                        mtime = st.st_mtime\n"
+        "                    except Exception:\n"
+        "                        size = 0\n"
+        "                        mtime = 0\n"
+        "                    result[rel] = {'name': name, 'is_dir': is_d, 'size': size, 'mtime': mtime, 'path': full}\n"
         "                except Exception:\n"
-        "                    size = 0\n"
-        "                    mtime = 0\n"
-        "                result[rel] = {'name': name, 'is_dir': is_d, 'size': size, 'mtime': mtime, 'path': full}\n"
+        "                    pass\n"
         "    else:\n"
         "        with os.scandir(abs_target) as it:\n"
         "            for entry in it:\n"
