@@ -1151,11 +1151,11 @@ async def sync_library_item(request: LibrarySyncRequest):
     
     item_rel_path = request.relative_path.replace("\\", "/")
     
-    def build_cmd(from_cfg, to_cfg):
+    def build_cmd(from_cfg, to_cfg, rel_path):
         src_base = from_cfg["path"].rstrip("/")
         dst_base = to_cfg["path"].rstrip("/")
-        src_full = f"{src_base}/{item_rel_path}"
-        dst_full = f"{dst_base}/{item_rel_path}"
+        src_full = f"{src_base}/{rel_path}"
+        dst_full = f"{dst_base}/{rel_path}"
         
         if not is_path_allowed(src_full, None if from_cfg["server"] == "local" else from_cfg["server"]):
             raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed roots.")
@@ -1199,16 +1199,68 @@ async def sync_library_item(request: LibrarySyncRequest):
             return f'scp -3 -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" -i "{rc_to.get("key_path")}" -r {rc_from.get("user")}@{rc_from.get("host")}:"{src_full}" {rc_to.get("user")}@{rc_to.get("host")}:"{dst_parent}/"'
 
     if request.direction == "both":
-        cmd1 = build_cmd(src_cfg, bk_cfg)
-        cmd2 = build_cmd(bk_cfg, src_cfg)
-        await executor.start_task(cmd1, queue_name="fs")
-        await executor.start_task(cmd2, queue_name="fs")
-        return {"message": "Bidirectional sync copy tasks queued successfully.", "commands": [cmd1, cmd2]}
+        # Scan contents inside this directory to find differences
+        try:
+            if src_cfg["server"] == "local":
+                src_deep = get_local_library_metadata(src_cfg["path"], item_rel_path, deep_scan=True)
+            else:
+                src_deep = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], item_rel_path, deep_scan=True)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Source deep scan failed: {str(e)}")
+            
+        try:
+            if bk_cfg["server"] == "local":
+                bk_deep = get_local_library_metadata(bk_cfg["path"], item_rel_path, deep_scan=True)
+            else:
+                bk_deep = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], item_rel_path, deep_scan=True)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Backup deep scan failed: {str(e)}")
+            
+        deep_items = get_library_union(src_deep, bk_deep)
+        deep_items.sort(key=lambda x: x["relative_path"])
+        
+        queued_backup_parents = []
+        queued_restore_parents = []
+        commands = []
+        
+        def is_parent_queued(path, queued_parents):
+            for parent in queued_parents:
+                if path.startswith(parent + "/"):
+                    return True
+            return False
+            
+        for deep_item in deep_items:
+            status = deep_item["status"]
+            if status == "synced":
+                continue
+                
+            sub_item_path = f"{item_rel_path}/{deep_item['relative_path']}"
+            is_dir = deep_item["is_dir"]
+            
+            # Backup: Only Source / Out of sync
+            if status in ("only_source", "pending_sync"):
+                if not is_parent_queued(sub_item_path, queued_backup_parents):
+                    cmd = build_cmd(src_cfg, bk_cfg, sub_item_path)
+                    await executor.start_task(cmd, queue_name="fs")
+                    commands.append(cmd)
+                    if is_dir:
+                        queued_backup_parents.append(sub_item_path)
+                        
+            # Restore: Only Backup / Out of sync
+            if status in ("only_backup", "pending_sync"):
+                if not is_parent_queued(sub_item_path, queued_restore_parents):
+                    cmd = build_cmd(bk_cfg, src_cfg, sub_item_path)
+                    await executor.start_task(cmd, queue_name="fs")
+                    commands.append(cmd)
+                    if is_dir:
+                        queued_restore_parents.append(sub_item_path)
+                        
+        return {"message": f"Bidirectional sync queued {len(commands)} individual copy tasks.", "commands": commands}
         
     elif request.direction == "backup":
-        cmd = build_cmd(src_cfg, bk_cfg)
+        cmd = build_cmd(src_cfg, bk_cfg, item_rel_path)
     else:
-        cmd = build_cmd(bk_cfg, src_cfg)
+        cmd = build_cmd(bk_cfg, src_cfg, item_rel_path)
         
     await executor.start_task(cmd, queue_name="fs")
     return {"message": "Sync copy task queued successfully.", "command": cmd}
