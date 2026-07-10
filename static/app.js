@@ -1839,9 +1839,9 @@ function createLibraryRow(item) {
     if (item.status === 'synced') {
         statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Synced</span>';
     } else if (item.status === 'full_sync') {
-        statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Full-sync</span>';
+        statusBadge = '<span style="background: rgba(38, 139, 210, 0.15); color: #268bd2; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Full-sync</span>';
     } else if (item.status === 'partial_sync') {
-        statusBadge = '<span style="background: #e67e2233; color: #e67e22; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Partial-sync</span>';
+        statusBadge = '<span style="background: rgba(211, 54, 130, 0.15); color: #d33682; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Partial-sync</span>';
     } else if (item.status === 'only_source') {
         statusBadge = '<span style="background: #3498db33; color: #3498db; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Source</span>';
     } else if (item.status === 'only_backup') {
@@ -1888,6 +1888,15 @@ function createLibraryRow(item) {
         actionButtons += `
             <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'restore')" title="Download to Source Location" style="color: var(--cyan); margin-left: 6px;">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 15V3"></path><polyline points="16 11 12 15 8 11"></polyline></svg>
+            </button>
+        `;
+    }
+    
+    // Bidirectional Sync Action (Only for partial-sync folders)
+    if (item.status === 'partial_sync') {
+        actionButtons += `
+            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'both')" title="Bidirectional Sync (Make Identical)" style="color: #d33682; margin-left: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
             </button>
         `;
     }

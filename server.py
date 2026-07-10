@@ -1145,65 +1145,70 @@ async def sync_library_item(request: LibrarySyncRequest):
     src_cfg = lib.get("source")
     bk_cfg = lib.get("backup")
     
-    if request.direction == "backup":
-        from_cfg = src_cfg
-        to_cfg = bk_cfg
-    else:
-        from_cfg = bk_cfg
-        to_cfg = src_cfg
-        
     import os
+    import subprocess
     from pathlib import Path
     
     item_rel_path = request.relative_path.replace("\\", "/")
     
-    src_base = from_cfg["path"].rstrip("/")
-    dst_base = to_cfg["path"].rstrip("/")
-    
-    src_full = f"{src_base}/{item_rel_path}"
-    dst_full = f"{dst_base}/{item_rel_path}"
-    
-    if not is_path_allowed(src_full, None if from_cfg["server"] == "local" else from_cfg["server"]):
-        raise HTTPException(status_code=403, detail="Access denied: Source path is outside allowed roots.")
-    if not is_path_allowed(dst_full, None if to_cfg["server"] == "local" else to_cfg["server"]):
-        raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed roots.")
+    def build_cmd(from_cfg, to_cfg):
+        src_base = from_cfg["path"].rstrip("/")
+        dst_base = to_cfg["path"].rstrip("/")
+        src_full = f"{src_base}/{item_rel_path}"
+        dst_full = f"{dst_base}/{item_rel_path}"
         
-    dst_parent = "/".join(dst_full.split("/")[:-1])
-    
-    if to_cfg["server"] == "local":
-        os.makedirs(dst_parent, exist_ok=True)
-    else:
-        if to_cfg["server"] not in remotes:
-            raise HTTPException(status_code=400, detail="Destination remote server not configured.")
-        rc = remotes[to_cfg["server"]]
-        user = rc.get("user")
-        host = rc.get("host")
-        key_path = rc.get("key_path")
-        mkdir_cmd = [
-            "ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
-            f"{user}@{host}", f"mkdir -p '{dst_parent}'"
-        ]
-        import subprocess
-        subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if not is_path_allowed(src_full, None if from_cfg["server"] == "local" else from_cfg["server"]):
+            raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed roots.")
+        if not is_path_allowed(dst_full, None if to_cfg["server"] == "local" else to_cfg["server"]):
+            raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed roots.")
+            
+        dst_parent = "/".join(dst_full.split("/")[:-1])
+        
+        if to_cfg["server"] == "local":
+            os.makedirs(dst_parent, exist_ok=True)
+        else:
+            if to_cfg["server"] not in remotes:
+                raise HTTPException(status_code=400, detail="Destination remote server not configured.")
+            rc = remotes[to_cfg["server"]]
+            user = rc.get("user")
+            host = rc.get("host")
+            key_path = rc.get("key_path")
+            mkdir_cmd = [
+                "ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
+                f"{user}@{host}", f"mkdir -p '{dst_parent}'"
+            ]
+            subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            
+        if from_cfg["server"] == "local" and to_cfg["server"] == "local":
+            return f'cp -r "{src_full}" "{dst_parent}/"'
+        elif from_cfg["server"] == "local" and to_cfg["server"] != "local":
+            rc = remotes[to_cfg["server"]]
+            user = rc.get("user")
+            host = rc.get("host")
+            key_path = rc.get("key_path")
+            return f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r "{src_full}" {user}@{host}:"{dst_parent}/"'
+        elif from_cfg["server"] != "local" and to_cfg["server"] == "local":
+            rc = remotes[from_cfg["server"]]
+            user = rc.get("user")
+            host = rc.get("host")
+            key_path = rc.get("key_path")
+            return f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src_full}" "{dst_parent}/"'
+        else:
+            rc_from = remotes[from_cfg["server"]]
+            rc_to = remotes[to_cfg["server"]]
+            return f'scp -3 -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" -i "{rc_to.get("key_path")}" -r {rc_from.get("user")}@{rc_from.get("host")}:"{src_full}" {rc_to.get("user")}@{rc_to.get("host")}:"{dst_parent}/"'
 
-    if from_cfg["server"] == "local" and to_cfg["server"] == "local":
-        cmd = f'cp -r "{src_full}" "{dst_parent}/"'
-    elif from_cfg["server"] == "local" and to_cfg["server"] != "local":
-        rc = remotes[to_cfg["server"]]
-        user = rc.get("user")
-        host = rc.get("host")
-        key_path = rc.get("key_path")
-        cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r "{src_full}" {user}@{host}:"{dst_parent}/"'
-    elif from_cfg["server"] != "local" and to_cfg["server"] == "local":
-        rc = remotes[from_cfg["server"]]
-        user = rc.get("user")
-        host = rc.get("host")
-        key_path = rc.get("key_path")
-        cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src_full}" "{dst_parent}/"'
+    if request.direction == "both":
+        cmd1 = build_cmd(src_cfg, bk_cfg)
+        cmd2 = build_cmd(bk_cfg, src_cfg)
+        await executor.start_task(cmd1, queue_name="fs")
+        await executor.start_task(cmd2, queue_name="fs")
+        return {"message": "Bidirectional sync copy tasks queued successfully.", "commands": [cmd1, cmd2]}
+        
+    elif request.direction == "backup":
+        cmd = build_cmd(src_cfg, bk_cfg)
     else:
-        rc_from = remotes[from_cfg["server"]]
-        rc_to = remotes[to_cfg["server"]]
-        cmd = f'scp -3 -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" -i "{rc_to.get("key_path")}" -r {rc_from.get("user")}@{rc_from.get("host")}:"{src_full}" {rc_to.get("user")}@{rc_to.get("host")}:"{dst_parent}/"'
+        cmd = build_cmd(bk_cfg, src_cfg)
         
     await executor.start_task(cmd, queue_name="fs")
     return {"message": "Sync copy task queued successfully.", "command": cmd}
