@@ -690,3 +690,18 @@ table td code {
 .auth-btn:hover {
     background: #2aa198cc !important;
 }
+
+/* Spinner Loader */
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(42, 161, 152, 0.1) !important;
+    border-top: 4px solid var(--cyan) !important;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}

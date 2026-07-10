@@ -1089,6 +1089,10 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
         "library_name": library_name,
         "subpath": subpath,
         "deep_scan": deep_scan,
+        "source_base": src_cfg["path"],
+        "source_server": src_cfg["server"],
+        "backup_base": bk_cfg["path"],
+        "backup_server": bk_cfg["server"],
         "items": union_items
     }
 

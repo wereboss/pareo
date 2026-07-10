@@ -1580,6 +1580,10 @@ function closeProcessLogsModal() {
 let currentLibraryName = "";
 let currentLibrarySubpath = "";
 let currentLibraryItems = [];
+let currentLibrarySourceBase = "";
+let currentLibrarySourceServer = "";
+let currentLibraryBackupBase = "";
+let currentLibraryBackupServer = "";
 
 async function fetchLibrariesList() {
     showLoading(40);
@@ -1728,7 +1732,16 @@ function renderLibraryBreadcrumbs() {
 async function fetchLibraryItems(deepScan = false) {
     showLoading(50);
     const tbody = document.getElementById('library-items-table-body');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--base1);">Scanning folders and aligning metadata...</td></tr>';
+    if (tbody) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="5" style="text-align: center; padding: 40px;">
+                    <div class="spinner"></div>
+                    <div style="color: var(--base1); font-weight: bold; font-size: 0.95em; margin-top: 10px;">Scanning folders and aligning metadata...</div>
+                </td>
+            </tr>
+        `;
+    }
     
     try {
         const url = `/api/libraries/browse?library_name=${encodeURIComponent(currentLibraryName)}&subpath=${encodeURIComponent(currentLibrarySubpath)}&deep_scan=${deepScan}`;
@@ -1740,6 +1753,12 @@ async function fetchLibraryItems(deepScan = false) {
             return;
         }
         const data = await response.json();
+        
+        currentLibrarySourceBase = data.source_base || "";
+        currentLibrarySourceServer = data.source_server || "";
+        currentLibraryBackupBase = data.backup_base || "";
+        currentLibraryBackupServer = data.backup_server || "";
+        
         currentLibraryItems = data.items || [];
         renderLibraryItems(currentLibraryItems);
     } catch (error) {
@@ -1764,84 +1783,237 @@ function renderLibraryItems(items) {
         return;
     }
 
-    items.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.style.borderBottom = '1px solid var(--base02)';
-        
-        // Icon and Name
-        const nameCell = document.createElement('td');
-        nameCell.style.padding = '10px';
-        nameCell.style.verticalAlign = 'middle';
-        
-        const isDir = item.is_dir;
-        const iconHtml = isDir 
-            ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--blue); vertical-align: middle; margin-right: 8px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`
-            : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--base1); vertical-align: middle; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
-            
-        const nameSpan = document.createElement('span');
-        nameSpan.innerHTML = iconHtml + (isDir ? `<span style="font-weight: bold; color: var(--cyan); cursor: pointer;">${item.name}</span>` : item.name);
-        
-        if (isDir) {
-            nameSpan.onclick = () => {
-                const nextSubpath = currentLibrarySubpath 
-                    ? `${currentLibrarySubpath}/${item.relative_path}`
-                    : item.relative_path;
-                openLibrary(currentLibraryName, nextSubpath);
-            };
+    // Lazy / progressive rendering via requestAnimationFrame to keep DOM responsive
+    const chunkSize = 45;
+    let index = 0;
+
+    function renderNextChunk() {
+        const chunk = items.slice(index, index + chunkSize);
+        chunk.forEach(item => {
+            const tr = createLibraryRow(item);
+            tbody.appendChild(tr);
+        });
+        index += chunkSize;
+        if (index < items.length) {
+            requestAnimationFrame(renderNextChunk);
         }
-        nameCell.appendChild(nameSpan);
-        tr.appendChild(nameCell);
+    }
 
-        // Status Badge
-        const statusCell = document.createElement('td');
-        statusCell.style.padding = '10px';
-        statusCell.style.verticalAlign = 'middle';
+    renderNextChunk();
+}
+
+function createLibraryRow(item) {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--base02)';
+    
+    // Icon and Name
+    const nameCell = document.createElement('td');
+    nameCell.style.padding = '10px';
+    nameCell.style.verticalAlign = 'middle';
+    
+    const isDir = item.is_dir;
+    const iconHtml = isDir 
+        ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--blue); vertical-align: middle; margin-right: 8px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`
+        : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--base1); vertical-align: middle; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
         
-        let statusBadge = "";
-        if (item.status === 'synced') {
-            statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Synced</span>';
-        } else if (item.status === 'only_source') {
-            statusBadge = '<span style="background: #3498db33; color: #3498db; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Source</span>';
-        } else if (item.status === 'only_backup') {
-            statusBadge = '<span style="background: #e67e2233; color: #e67e22; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Backup</span>';
-        } else if (item.status === 'pending_sync') {
-            statusBadge = '<span style="background: #f1c40f33; color: #f1c40f; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Pending Sync</span>';
+    const nameSpan = document.createElement('span');
+    nameSpan.innerHTML = iconHtml + (isDir ? `<span style="font-weight: bold; color: var(--cyan); cursor: pointer;">${item.name}</span>` : item.name);
+    
+    if (isDir) {
+        nameSpan.onclick = () => {
+            const nextSubpath = currentLibrarySubpath 
+                ? `${currentLibrarySubpath}/${item.relative_path}`
+                : item.relative_path;
+            openLibrary(currentLibraryName, nextSubpath);
+        };
+    }
+    nameCell.appendChild(nameSpan);
+    tr.appendChild(nameCell);
+
+    // Status Badge
+    const statusCell = document.createElement('td');
+    statusCell.style.padding = '10px';
+    statusCell.style.verticalAlign = 'middle';
+    
+    let statusBadge = "";
+    if (item.status === 'synced') {
+        statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Synced</span>';
+    } else if (item.status === 'only_source') {
+        statusBadge = '<span style="background: #3498db33; color: #3498db; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Source</span>';
+    } else if (item.status === 'only_backup') {
+        statusBadge = '<span style="background: #e67e2233; color: #e67e22; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Backup</span>';
+    } else if (item.status === 'pending_sync') {
+        statusBadge = '<span style="background: #f1c40f33; color: #f1c40f; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Pending Sync</span>';
+    }
+    statusCell.innerHTML = statusBadge;
+    tr.appendChild(statusCell);
+
+    // Sizes
+    const srcSizeCell = document.createElement('td');
+    srcSizeCell.style.padding = '10px';
+    srcSizeCell.style.verticalAlign = 'middle';
+    srcSizeCell.textContent = item.source_exists && !isDir ? formatSize(item.source_size) : '-';
+    tr.appendChild(srcSizeCell);
+
+    const bkSizeCell = document.createElement('td');
+    bkSizeCell.style.padding = '10px';
+    bkSizeCell.style.verticalAlign = 'middle';
+    bkSizeCell.textContent = item.backup_exists && !isDir ? formatSize(item.backup_size) : '-';
+    tr.appendChild(bkSizeCell);
+
+    // Actions
+    const actionsCell = document.createElement('td');
+    actionsCell.style.padding = '10px';
+    actionsCell.style.textAlign = 'right';
+    actionsCell.style.verticalAlign = 'middle';
+    actionsCell.style.whiteSpace = 'nowrap';
+    
+    let actionButtons = '';
+    
+    // Backup Action
+    if (item.status === 'only_source' || item.status === 'pending_sync') {
+        actionButtons += `
+            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'backup')" title="Back Up to Backup Location" style="color: var(--cyan); margin-left: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 3v12"></path><polyline points="8 7 12 3 16 7"></polyline></svg>
+            </button>
+        `;
+    }
+    
+    // Download/Restore Action
+    if (item.status === 'only_backup' || item.status === 'pending_sync') {
+        actionButtons += `
+            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'restore')" title="Download to Source Location" style="color: var(--orange); margin-left: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 15V3"></path><polyline points="16 11 12 15 8 11"></polyline></svg>
+            </button>
+        `;
+    }
+    
+    // Rename Action
+    actionButtons += `
+        <button class="action-icon-btn" onclick="renameLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', ${item.source_exists}, ${item.backup_exists}, '${item.name.replace(/'/g, "\\'")}')" title="Rename File/Folder" style="color: var(--yellow); margin-left: 6px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg>
+        </button>
+    `;
+    
+    // Delete Action
+    actionButtons += `
+        <button class="action-icon-btn" onclick="deleteLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', ${item.source_exists}, ${item.backup_exists}, '${item.name.replace(/'/g, "\\'")}')" title="Delete File/Folder" style="color: var(--red); margin-left: 6px;">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </button>
+    `;
+    
+    actionsCell.innerHTML = actionButtons;
+    tr.appendChild(actionsCell);
+    
+    return tr;
+}
+
+async function renameLibraryItem(relativePath, sourceExists, backupExists, currentName) {
+    const newName = prompt(`Enter new name for "${currentName}":`, currentName);
+    if (!newName || newName === currentName) return;
+    
+    showLoading(30);
+    try {
+        const promises = [];
+        if (sourceExists) {
+            const srcPath = `${currentLibrarySourceBase}/${relativePath}`;
+            promises.push(fetch('/api/fs/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_path: srcPath,
+                    new_name: newName,
+                    remote_server: currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer
+                })
+            }));
         }
-        statusCell.innerHTML = statusBadge;
-        tr.appendChild(statusCell);
-
-        // Sizes
-        const srcSizeCell = document.createElement('td');
-        srcSizeCell.style.padding = '10px';
-        srcSizeCell.style.verticalAlign = 'middle';
-        srcSizeCell.textContent = item.source_exists && !isDir ? formatSize(item.source_size) : '-';
-        tr.appendChild(srcSizeCell);
-
-        const bkSizeCell = document.createElement('td');
-        bkSizeCell.style.padding = '10px';
-        bkSizeCell.style.verticalAlign = 'middle';
-        bkSizeCell.textContent = item.backup_exists && !isDir ? formatSize(item.backup_size) : '-';
-        tr.appendChild(bkSizeCell);
-
-        // Actions
-        const actionsCell = document.createElement('td');
-        actionsCell.style.padding = '10px';
-        actionsCell.style.textAlign = 'right';
-        actionsCell.style.verticalAlign = 'middle';
-        actionsCell.style.whiteSpace = 'nowrap';
+        if (backupExists) {
+            const bkPath = `${currentLibraryBackupBase}/${relativePath}`;
+            promises.push(fetch('/api/fs/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    source_path: bkPath,
+                    new_name: newName,
+                    remote_server: currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer
+                })
+            }));
+        }
         
-        let actionButtons = '';
-        if (item.status === 'only_source' || item.status === 'pending_sync') {
-            actionButtons += `<button class="btn btn-sm" onclick="syncItem('${item.relative_path}', 'backup')" style="padding: 4px 8px; font-size: 0.85em; font-weight: bold; background: var(--cyan) !important; color: var(--base03) !important; border: none; margin-left: 5px;">Back Up</button>`;
+        const responses = await Promise.all(promises);
+        let success = true;
+        for (let res of responses) {
+            if (!res.ok) {
+                success = false;
+                const err = await res.json();
+                alert(`Rename failed: ${err.detail}`);
+            }
         }
-        if (item.status === 'only_backup' || item.status === 'pending_sync') {
-            actionButtons += `<button class="btn btn-sm" onclick="syncItem('${item.relative_path}', 'restore')" style="padding: 4px 8px; font-size: 0.85em; font-weight: bold; background: var(--orange) !important; color: var(--base03) !important; border: none; margin-left: 5px;">Download</button>`;
+        if (success) {
+            showTemporarySyncToast("Renamed successfully.");
+            fetchLibraryItems(document.getElementById('btn-library-deep-scan').textContent === "Exit Deep Scan");
         }
-        actionsCell.innerHTML = actionButtons;
-        tr.appendChild(actionsCell);
+    } catch (e) {
+        console.error("Rename failed:", e);
+    } finally {
+        hideLoading();
+    }
+}
 
-        tbody.appendChild(tr);
-    });
+async function deleteLibraryItem(relativePath, sourceExists, backupExists, currentName) {
+    if (!confirm(`Are you sure you want to delete "${currentName}"?\nThis action will queue a delete command on both source and backup if they exist.`)) return;
+    
+    showLoading(30);
+    try {
+        const promises = [];
+        if (sourceExists) {
+            const srcPath = `${currentLibrarySourceBase}/${relativePath}`;
+            promises.push(fetch('/api/execute/fs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'Delete',
+                    source_paths: [srcPath],
+                    destination_path: '',
+                    source_server: currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer
+                })
+            }));
+        }
+        if (backupExists) {
+            const bkPath = `${currentLibraryBackupBase}/${relativePath}`;
+            promises.push(fetch('/api/execute/fs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'Delete',
+                    source_paths: [bkPath],
+                    destination_path: '',
+                    source_server: currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer
+                })
+            }));
+        }
+        
+        const responses = await Promise.all(promises);
+        let success = true;
+        for (let res of responses) {
+            if (!res.ok) {
+                success = false;
+                const err = await res.json();
+                alert(`Deletion failed: ${err.detail}`);
+            }
+        }
+        if (success) {
+            showTemporarySyncToast("Deletion task queued in Queue runner.");
+            updateTaskTicker();
+            setTimeout(() => {
+                fetchLibraryItems(document.getElementById('btn-library-deep-scan').textContent === "Exit Deep Scan");
+            }, 1000);
+        }
+    } catch (e) {
+        console.error("Deletion failed:", e);
+    } finally {
+        hideLoading();
+    }
 }
 
 function filterLibraryItems() {
