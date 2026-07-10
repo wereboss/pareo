@@ -1921,11 +1921,15 @@ async function renameLibraryItem(relativePath, sourceExists, backupExists, curre
     const newName = prompt(`Enter new name for "${currentName}":`, currentName);
     if (!newName || newName === currentName) return;
     
+    const fullRelativePath = currentLibrarySubpath 
+        ? `${currentLibrarySubpath}/${relativePath}` 
+        : relativePath;
+        
     showLoading(30);
     try {
         const promises = [];
         if (sourceExists) {
-            const srcPath = `${currentLibrarySourceBase}/${relativePath}`;
+            const srcPath = `${currentLibrarySourceBase}/${fullRelativePath}`;
             promises.push(fetch('/api/fs/rename', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1937,7 +1941,7 @@ async function renameLibraryItem(relativePath, sourceExists, backupExists, curre
             }));
         }
         if (backupExists) {
-            const bkPath = `${currentLibraryBackupBase}/${relativePath}`;
+            const bkPath = `${currentLibraryBackupBase}/${fullRelativePath}`;
             promises.push(fetch('/api/fs/rename', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1972,15 +1976,19 @@ async function renameLibraryItem(relativePath, sourceExists, backupExists, curre
 async function deleteLibraryItem(relativePath, target, currentName) {
     if (!confirm(`Are you sure you want to delete "${currentName}" from the ${target}?`)) return;
     
+    const fullRelativePath = currentLibrarySubpath 
+        ? `${currentLibrarySubpath}/${relativePath}` 
+        : relativePath;
+        
     showLoading(30);
     try {
         let path = "";
         let server = "";
         if (target === 'source') {
-            path = `${currentLibrarySourceBase}/${relativePath}`;
+            path = `${currentLibrarySourceBase}/${fullRelativePath}`;
             server = currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer;
         } else {
-            path = `${currentLibraryBackupBase}/${relativePath}`;
+            path = `${currentLibraryBackupBase}/${fullRelativePath}`;
             server = currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer;
         }
         
@@ -2026,6 +2034,10 @@ function filterLibraryItems() {
 }
 
 async function syncItem(relativePath, direction) {
+    const fullRelativePath = currentLibrarySubpath 
+        ? `${currentLibrarySubpath}/${relativePath}` 
+        : relativePath;
+        
     showLoading(30);
     try {
         const response = await fetch('/api/libraries/sync', {
@@ -2033,7 +2045,7 @@ async function syncItem(relativePath, direction) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 library_name: currentLibraryName,
-                relative_path: relativePath,
+                relative_path: fullRelativePath,
                 direction: direction
             })
         });

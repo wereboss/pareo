@@ -1061,30 +1061,58 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
     if not src_cfg or not bk_cfg:
         raise HTTPException(status_code=400, detail="Library source and backup settings must be configured.")
         
-    # Get source metadata
+    # Get top-level source metadata
     try:
         if src_cfg["server"] == "local":
-            src_meta = get_local_library_metadata(src_cfg["path"], subpath, deep_scan)
+            src_top = get_local_library_metadata(src_cfg["path"], subpath, deep_scan=False)
         else:
-            src_meta = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan)
+            src_top = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Source listing failed: {str(e)}")
         
-    # Get backup metadata
+    # Get top-level backup metadata
     try:
         if bk_cfg["server"] == "local":
-            bk_meta = get_local_library_metadata(bk_cfg["path"], subpath, deep_scan)
+            bk_top = get_local_library_metadata(bk_cfg["path"], subpath, deep_scan=False)
         else:
-            bk_meta = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan)
+            bk_top = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan=False)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Backup listing failed: {str(e)}")
         
-    union_items = get_library_union(src_meta, bk_meta)
+    top_items = get_library_union(src_top, bk_top)
     
-    # If it is a deep_scan, filter out synced items
+    # If deep scan is enabled, recursively check differences under top-level subfolders
     if deep_scan:
-        union_items = [item for item in union_items if item["status"] != "synced"]
+        try:
+            if src_cfg["server"] == "local":
+                src_deep = get_local_library_metadata(src_cfg["path"], subpath, deep_scan=True)
+            else:
+                src_deep = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan=True)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Source deep scan failed: {str(e)}")
+            
+        try:
+            if bk_cfg["server"] == "local":
+                bk_deep = get_local_library_metadata(bk_cfg["path"], subpath, deep_scan=True)
+            else:
+                bk_deep = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan=True)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Backup deep scan failed: {str(e)}")
+            
+        deep_items = get_library_union(src_deep, bk_deep)
+        out_of_sync_paths = {item["relative_path"] for item in deep_items if item["status"] != "synced"}
         
+        for item in top_items:
+            if item["is_dir"] and item["status"] == "synced":
+                # Check if there are any differences inside this directory
+                prefix = item["relative_path"] + "/"
+                has_diffs = any(p.startswith(prefix) for p in out_of_sync_paths)
+                
+                if has_diffs:
+                    item["status"] = "partial_sync"
+                else:
+                    item["status"] = "full_sync"
+                    
     return {
         "library_name": library_name,
         "subpath": subpath,
@@ -1093,7 +1121,7 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
         "source_server": src_cfg["server"],
         "backup_base": bk_cfg["path"],
         "backup_server": bk_cfg["server"],
-        "items": union_items
+        "items": top_items
     }
 
 @app.post("/api/libraries/sync")
