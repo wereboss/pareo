@@ -1895,12 +1895,21 @@ function createLibraryRow(item) {
         </button>
     `;
     
-    // Delete Action
-    actionButtons += `
-        <button class="action-icon-btn" onclick="deleteLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', ${item.source_exists}, ${item.backup_exists}, '${item.name.replace(/'/g, "\\'")}')" title="Delete File/Folder" style="color: var(--red); margin-left: 6px;">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-        </button>
-    `;
+    // Delete Actions
+    if (item.source_exists) {
+        actionButtons += `
+            <button class="action-icon-btn" onclick="deleteLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', 'source', '${item.name.replace(/'/g, "\\'")}')" title="Delete from Source" style="color: var(--cyan); margin-left: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 0px 1px var(--red));"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            </button>
+        `;
+    }
+    if (item.backup_exists) {
+        actionButtons += `
+            <button class="action-icon-btn" onclick="deleteLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', 'backup', '${item.name.replace(/'/g, "\\'")}')" title="Delete from Backup" style="color: var(--orange); margin-left: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 0px 1px var(--red));"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+            </button>
+        `;
+    }
     
     actionsCell.innerHTML = actionButtons;
     tr.appendChild(actionsCell);
@@ -1960,54 +1969,41 @@ async function renameLibraryItem(relativePath, sourceExists, backupExists, curre
     }
 }
 
-async function deleteLibraryItem(relativePath, sourceExists, backupExists, currentName) {
-    if (!confirm(`Are you sure you want to delete "${currentName}"?\nThis action will queue a delete command on both source and backup if they exist.`)) return;
+async function deleteLibraryItem(relativePath, target, currentName) {
+    if (!confirm(`Are you sure you want to delete "${currentName}" from the ${target}?`)) return;
     
     showLoading(30);
     try {
-        const promises = [];
-        if (sourceExists) {
-            const srcPath = `${currentLibrarySourceBase}/${relativePath}`;
-            promises.push(fetch('/api/execute/fs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'Delete',
-                    source_paths: [srcPath],
-                    destination_path: '',
-                    source_server: currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer
-                })
-            }));
-        }
-        if (backupExists) {
-            const bkPath = `${currentLibraryBackupBase}/${relativePath}`;
-            promises.push(fetch('/api/execute/fs', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'Delete',
-                    source_paths: [bkPath],
-                    destination_path: '',
-                    source_server: currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer
-                })
-            }));
+        let path = "";
+        let server = "";
+        if (target === 'source') {
+            path = `${currentLibrarySourceBase}/${relativePath}`;
+            server = currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer;
+        } else {
+            path = `${currentLibraryBackupBase}/${relativePath}`;
+            server = currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer;
         }
         
-        const responses = await Promise.all(promises);
-        let success = true;
-        for (let res of responses) {
-            if (!res.ok) {
-                success = false;
-                const err = await res.json();
-                alert(`Deletion failed: ${err.detail}`);
-            }
-        }
-        if (success) {
-            showTemporarySyncToast("Deletion task queued in Queue runner.");
+        const response = await fetch('/api/execute/fs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'Delete',
+                source_paths: [path],
+                destination_path: '',
+                source_server: server
+            })
+        });
+        
+        if (response.ok) {
+            showTemporarySyncToast(`Deletion task queued for ${target}.`);
             updateTaskTicker();
             setTimeout(() => {
                 fetchLibraryItems(document.getElementById('btn-library-deep-scan').textContent === "Exit Deep Scan");
             }, 1000);
+        } else {
+            const err = await response.json();
+            alert(`Deletion failed: ${err.detail}`);
         }
     } catch (e) {
         console.error("Deletion failed:", e);
