@@ -1838,6 +1838,10 @@ function createLibraryRow(item) {
     let statusBadge = "";
     if (item.status === 'synced') {
         statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Synced</span>';
+    } else if (item.status === 'full_sync') {
+        statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Full-sync</span>';
+    } else if (item.status === 'partial_sync') {
+        statusBadge = '<span style="background: #e67e2233; color: #e67e22; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Partial-sync</span>';
     } else if (item.status === 'only_source') {
         statusBadge = '<span style="background: #3498db33; color: #3498db; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Source</span>';
     } else if (item.status === 'only_backup') {
