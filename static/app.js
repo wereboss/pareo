@@ -2120,6 +2120,10 @@ function showTemporarySyncToast(message) {
 }
 
 async function showMediaInfo(relativePath) {
+    const fullRelativePath = currentLibrarySubpath 
+        ? `${currentLibrarySubpath}/${relativePath}` 
+        : relativePath;
+        
     showLoading();
     try {
         const response = await fetch('/api/libraries/media-info', {
@@ -2130,7 +2134,7 @@ async function showMediaInfo(relativePath) {
             },
             body: JSON.stringify({
                 library_name: currentLibraryName,
-                relative_path: relativePath
+                relative_path: fullRelativePath
             })
         });
         
@@ -2235,7 +2239,7 @@ async function showMediaInfo(relativePath) {
                         <div style="font-weight: bold; color: #2c3e50;">${name}</div>
                         <div style="color: #666; font-size: 0.85em; font-family: monospace; word-break: break-all; margin-top: 3px;">${p.flags}</div>
                     </div>
-                    <button class="btn btn-sm" onclick="startMediaConversion('${relativePath.replace(/'/g, "\\'")}', '${name.replace(/'/g, "\\'")}')" style="background: #2980b9; color: #fff; border: none; font-weight: bold; padding: 6px 12px; cursor: pointer; border-radius: 4px; white-space: nowrap;">Convert</button>
+                    <button class="btn btn-sm" onclick="startMediaConversion('${fullRelativePath.replace(/'/g, "\\'")}', '${name.replace(/'/g, "\\'")}')" style="background: #2980b9; color: #fff; border: none; font-weight: bold; padding: 6px 12px; cursor: pointer; border-radius: 4px; white-space: nowrap;">Convert</button>
                 `;
                 profilesDiv.appendChild(profileCard);
             }
