@@ -1377,63 +1377,73 @@ async def run_conversion_pipeline_task(
     conversion_temp = "/home/sayang/Programs/pareo/conversion_temp"
     os.makedirs(conversion_temp, exist_ok=True)
     
+    temp_src_id = str(uuid.uuid4())
     temp_src_file = ""
-    temp_dst_file = ""
+    temp_dst_file = os.path.join(conversion_temp, f"{temp_src_id}_{dest_filename}")
     
-    # --- STAGE 1: COPY TO CONVERSION MACHINE ---
-    if server == "local":
-        database.update_task_status(t1_id, "Running")
-        database.update_task_start_time(t1_id, datetime.now().isoformat())
-        database.append_task_output(t1_id, "Source file is already local. Skipping copy stage.")
-        database.update_task_status(t1_id, "Completed", datetime.now().isoformat())
+    try:
+        # --- STAGE 1: COPY TO CONVERSION MACHINE ---
+        if server == "local":
+            database.update_task_status(t1_id, "Running")
+            database.update_task_start_time(t1_id, datetime.now().isoformat())
+            database.append_task_output(t1_id, "Source file is already local. Skipping copy stage.")
+            database.update_task_status(t1_id, "Completed", datetime.now().isoformat())
+            
+            local_src_file = src_full
+        else:
+            temp_src_file = os.path.join(conversion_temp, f"{temp_src_id}_{filename}")
+            local_src_file = temp_src_file
+            
+            rc = remotes[server]
+            copy_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" -r {rc.get("user")}@{rc.get("host")}:"{src_full}" "{temp_src_file}"'
+            
+            success = await run_pipeline_command(t1_id, copy_cmd)
+            if not success:
+                end_time = datetime.now().isoformat()
+                database.update_task_status(t2_id, "Failed (Dependency Failed)", end_time)
+                database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
+                return
+                
+        # --- STAGE 2: CONVERT ---
+        flags = profile.get("flags", "")
+        convert_cmd = f'ffmpeg -y -i "{local_src_file}" {flags} "{temp_dst_file}"'
         
-        local_src_file = src_full
-        local_dst_file = dest_full_path
-    else:
-        temp_src_id = str(uuid.uuid4())
-        temp_src_file = os.path.join(conversion_temp, f"{temp_src_id}_{filename}")
-        temp_dst_file = os.path.join(conversion_temp, f"{temp_src_id}_{dest_filename}")
-        
-        rc = remotes[server]
-        copy_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" -r {rc.get("user")}@{rc.get("host")}:"{src_full}" "{temp_src_file}"'
-        
-        success = await run_pipeline_command(t1_id, copy_cmd)
+        success = await run_pipeline_command(t2_id, convert_cmd)
         if not success:
             end_time = datetime.now().isoformat()
-            database.update_task_status(t2_id, "Failed (Dependency Failed)", end_time)
             database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
-            if os.path.exists(temp_src_file): os.remove(temp_src_file)
             return
             
-        local_src_file = temp_src_file
-        local_dst_file = temp_dst_file
-        
-    # --- STAGE 2: CONVERT ---
-    flags = profile.get("flags", "")
-    convert_cmd = f'ffmpeg -y -i "{local_src_file}" {flags} "{local_dst_file}"'
-    
-    success = await run_pipeline_command(t2_id, convert_cmd)
-    if not success:
-        end_time = datetime.now().isoformat()
-        database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
-        if temp_src_file and os.path.exists(temp_src_file): os.remove(temp_src_file)
-        if temp_dst_file and os.path.exists(temp_dst_file): os.remove(temp_dst_file)
-        return
-        
-    # --- STAGE 3: BRING BACK CONVERTED FILE ---
-    if server == "local":
+        # --- STAGE 3: BRING BACK CONVERTED FILE ---
         database.update_task_status(t3_id, "Running")
         database.update_task_start_time(t3_id, datetime.now().isoformat())
-        database.append_task_output(t3_id, "Destination file is already local. Skipping bring-back stage.")
-        database.update_task_status(t3_id, "Completed", datetime.now().isoformat())
-    else:
-        rc = remotes[server]
-        bring_back_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" "{temp_dst_file}" {rc.get("user")}@{rc.get("host")}:"{dest_full_path}"'
         
-        success = await run_pipeline_command(t3_id, bring_back_cmd)
-        
-        if os.path.exists(temp_src_file): os.remove(temp_src_file)
-        if os.path.exists(temp_dst_file): os.remove(temp_dst_file)
+        if server == "local":
+            try:
+                database.append_task_output(t3_id, f"Moving local converted file to target: {dest_full_path}")
+                shutil.move(temp_dst_file, dest_full_path)
+                database.update_task_status(t3_id, "Completed", datetime.now().isoformat())
+            except Exception as e:
+                database.append_task_output(t3_id, f"\nError moving file: {str(e)}")
+                database.update_task_status(t3_id, "Failed (Move Error)", datetime.now().isoformat())
+        else:
+            rc = remotes[server]
+            bring_back_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" "{temp_dst_file}" {rc.get("user")}@{rc.get("host")}:"{dest_full_path}"'
+            
+            success = await run_pipeline_command(t3_id, bring_back_cmd)
+            
+    finally:
+        # Always clean up temporary input and output files
+        if temp_src_file and os.path.exists(temp_src_file):
+            try:
+                os.remove(temp_src_file)
+            except Exception:
+                pass
+        if temp_dst_file and os.path.exists(temp_dst_file):
+            try:
+                os.remove(temp_dst_file)
+            except Exception:
+                pass
 
 @app.post("/api/libraries/media-info")
 def get_media_info(request: MediaInfoRequest):
