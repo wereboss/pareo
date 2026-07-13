@@ -1677,6 +1677,7 @@ async function openLibrary(name, subpath = "", deepScan = false) {
     
     document.getElementById('library-detail-title').textContent = `${name}`;
     document.getElementById('library-search').value = "";
+    document.getElementById('library-status-filter').value = "all";
     
     // Toggle deep scan styling
     const scanBtn = document.getElementById('btn-library-deep-scan');
@@ -2044,14 +2045,21 @@ async function deleteLibraryItem(relativePath, target, currentName) {
 
 function filterLibraryItems() {
     const query = document.getElementById('library-search').value.toLowerCase().trim();
-    if (!query) {
-        renderLibraryItems(currentLibraryItems);
-        return;
+    const statusVal = document.getElementById('library-status-filter').value;
+    
+    let filtered = currentLibraryItems;
+    
+    if (statusVal !== 'all') {
+        filtered = filtered.filter(item => item.status === statusVal);
     }
-    const filtered = currentLibraryItems.filter(item => 
-        item.name.toLowerCase().includes(query) || 
-        item.relative_path.toLowerCase().includes(query)
-    );
+    
+    if (query) {
+        filtered = filtered.filter(item => 
+            item.name.toLowerCase().includes(query) || 
+            item.relative_path.toLowerCase().includes(query)
+        );
+    }
+    
     renderLibraryItems(filtered);
 }
 

@@ -1224,6 +1224,27 @@ async def sync_library_item(request: LibrarySyncRequest):
         if not is_path_allowed(dst_full, None if bk_cfg["server"] == "local" else bk_cfg["server"]):
             raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed roots.")
             
+        # Ensure lineage (parent directories) exist on both sides
+        def ensure_parent_exists(server_name, path):
+            import subprocess
+            parent = "/".join(path.rstrip("/").split("/")[:-1])
+            if not parent:
+                return
+            if server_name == "local":
+                os.makedirs(parent, exist_ok=True)
+            else:
+                if server_name not in remotes:
+                    return
+                rc = remotes[server_name]
+                mkdir_cmd = [
+                    "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc["key_path"],
+                    f"{rc['user']}@{rc['host']}", f"mkdir -p '{parent}'"
+                ]
+                subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+        ensure_parent_exists(src_cfg["server"], src_full)
+        ensure_parent_exists(bk_cfg["server"], dst_full)
+
         # Ensure trailing slash for directory contents synchronization
         src_dir = src_full if src_full.endswith("/") else f"{src_full}/"
         dst_dir = dst_full if dst_full.endswith("/") else f"{dst_full}/"

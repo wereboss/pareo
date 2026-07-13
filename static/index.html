@@ -196,6 +196,14 @@
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <input type="text" id="library-search" oninput="filterLibraryItems()" placeholder="Search library items..." style="padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan); width: 200px;">
+                        <select id="library-status-filter" onchange="filterLibraryItems()" style="padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan); outline: none; cursor: pointer;">
+                            <option value="all">All Statuses</option>
+                            <option value="synced">Synced / Full-Sync</option>
+                            <option value="partial_sync">Partial-Sync</option>
+                            <option value="pending_sync">Pending Sync</option>
+                            <option value="only_source">Only Source</option>
+                            <option value="only_backup">Only Backup</option>
+                        </select>
                         <button id="btn-library-deep-scan" class="btn btn-sm" onclick="triggerLibraryDeepScan()" style="padding: 6px 12px; font-weight: bold; background: var(--yellow) !important; color: var(--base03) !important; border: none;">Deep Sync Scan</button>
                     </div>
                 </div>
