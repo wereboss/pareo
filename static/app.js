@@ -2135,8 +2135,18 @@ async function showMediaInfo(relativePath) {
         });
         
         if (!response.ok) {
-            const err = await response.json();
-            alert(`Failed to fetch media details: ${err.detail}`);
+            let errorMsg = response.statusText || 'Internal Server Error';
+            try {
+                const err = await response.json();
+                if (err && err.detail) {
+                    errorMsg = err.detail;
+                }
+            } catch (jsonErr) {
+                try {
+                    errorMsg = await response.text();
+                } catch (textErr) {}
+            }
+            alert(`Failed to fetch media details: ${errorMsg}`);
             return;
         }
         

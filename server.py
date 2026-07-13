@@ -1446,15 +1446,41 @@ def get_media_info(request: MediaInfoRequest):
         
     lib = libraries[request.library_name]
     src_cfg = lib.get("source")
-    
-    server = src_cfg["server"]
-    base_path = src_cfg["path"].rstrip("/")
-    rel_path = request.relative_path.replace("\\", "/")
-    full_path = f"{base_path}/{rel_path}"
+    bk_cfg = lib.get("backup")
     
     import json
     import subprocess
     import shlex
+    
+    # Helper to check file existence locally or remotely
+    def remote_file_exists(server_name, path):
+        if server_name == "local":
+            return os.path.exists(path)
+        else:
+            if server_name not in remotes:
+                return False
+            rc = remotes[server_name]
+            cmd = [
+                "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc["key_path"],
+                f"{rc['user']}@{rc['host']}", f"test -e {shlex.quote(path)}"
+            ]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return res.returncode == 0
+            
+    rel_path = request.relative_path.replace("\\", "/")
+    src_path = f"{src_cfg['path'].rstrip('/')}/{rel_path}"
+    
+    if remote_file_exists(src_cfg["server"], src_path):
+        target_cfg = src_cfg
+        full_path = src_path
+    elif bk_cfg and remote_file_exists(bk_cfg["server"], f"{bk_cfg['path'].rstrip('/')}/{rel_path}"):
+        target_cfg = bk_cfg
+        full_path = f"{bk_cfg['path'].rstrip('/')}/{rel_path}"
+    else:
+        target_cfg = src_cfg
+        full_path = src_path
+        
+    server = target_cfg["server"]
     
     if not is_path_allowed(full_path, None if server == "local" else server):
         raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed roots.")
