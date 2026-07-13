@@ -1468,7 +1468,7 @@ def get_media_info(request: MediaInfoRequest):
         if server not in remotes:
             raise HTTPException(status_code=400, detail="Remote server not configured.")
         rc = remotes[server]
-        ffprobe_cmd = f"env PATH=\\\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\\\" ffprobe -v quiet -print_format json -show_format -show_streams '{full_path}'"
+        ffprobe_cmd = f"env PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin ffprobe -v quiet -print_format json -show_format -show_streams '{full_path}'"
         cmd = [
             "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc.get("key_path"),
             f"{rc.get('user')}@{rc.get('host')}", ffprobe_cmd
