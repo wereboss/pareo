@@ -1479,7 +1479,10 @@ def get_media_info(request: MediaInfoRequest):
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
     if res.returncode != 0:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch media info: {res.stderr.strip()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch media info. Return code: {res.returncode}. Stderr: {res.stderr.strip()}. Stdout: {res.stdout.strip()}. Cmd: {cmd}"
+        )
         
     try:
         data = json.loads(res.stdout)
