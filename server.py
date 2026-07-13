@@ -1,9 +1,11 @@
 import os
 import glob
+import uuid
+from datetime import datetime
 from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -847,7 +849,16 @@ def get_monitored_process_logs(name: str, lines: Optional[int] = 100):
 class LibrarySyncRequest(BaseModel):
     library_name: str
     relative_path: str
-    direction: str # "backup" or "restore"
+    direction: str # "backup" or "restore" or "both"
+
+class MediaInfoRequest(BaseModel):
+    library_name: str
+    relative_path: str
+
+class MediaConvertRequest(BaseModel):
+    library_name: str
+    relative_path: str
+    profile_name: str
 
 def get_local_library_metadata(base_path: str, subpath: str, deep_scan: bool = False) -> dict:
     import os
@@ -1199,63 +1210,56 @@ async def sync_library_item(request: LibrarySyncRequest):
             return f'scp -3 -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" -i "{rc_to.get("key_path")}" -r {rc_from.get("user")}@{rc_from.get("host")}:"{src_full}" {rc_to.get("user")}@{rc_to.get("host")}:"{dst_parent}/"'
 
     if request.direction == "both":
-        # Scan contents inside this directory to find differences
-        try:
-            if src_cfg["server"] == "local":
-                src_deep = get_local_library_metadata(src_cfg["path"], item_rel_path, deep_scan=True)
-            else:
-                src_deep = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], item_rel_path, deep_scan=True)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Source deep scan failed: {str(e)}")
-            
-        try:
-            if bk_cfg["server"] == "local":
-                bk_deep = get_local_library_metadata(bk_cfg["path"], item_rel_path, deep_scan=True)
-            else:
-                bk_deep = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], item_rel_path, deep_scan=True)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Backup deep scan failed: {str(e)}")
-            
-        deep_items = get_library_union(src_deep, bk_deep)
-        deep_items.sort(key=lambda x: x["relative_path"])
+        # Bidirectional sync using rsync in two stages:
+        # Stage 1: Copy missing/newer items from Source to Backup
+        # Stage 2: Copy missing/newer items from Backup to Source
+        src_base = src_cfg["path"].rstrip("/")
+        dst_base = bk_cfg["path"].rstrip("/")
+        src_full = f"{src_base}/{item_rel_path}"
+        dst_full = f"{dst_base}/{item_rel_path}"
         
-        queued_backup_parents = []
-        queued_restore_parents = []
-        commands = []
+        # Verify paths are allowed
+        if not is_path_allowed(src_full, None if src_cfg["server"] == "local" else src_cfg["server"]):
+            raise HTTPException(status_code=403, detail="Access denied: Source path is outside allowed roots.")
+        if not is_path_allowed(dst_full, None if bk_cfg["server"] == "local" else bk_cfg["server"]):
+            raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed roots.")
+            
+        # Ensure trailing slash for directory contents synchronization
+        src_dir = src_full if src_full.endswith("/") else f"{src_full}/"
+        dst_dir = dst_full if dst_full.endswith("/") else f"{dst_full}/"
         
-        def is_parent_queued(path, queued_parents):
-            for parent in queued_parents:
-                if path.startswith(parent + "/"):
-                    return True
-            return False
+        cmd1 = ""
+        cmd2 = ""
+        
+        # 1. Local to Local
+        if src_cfg["server"] == "local" and bk_cfg["server"] == "local":
+            cmd1 = f'rsync -rtu "{src_dir}" "{dst_dir}"'
+            cmd2 = f'rsync -rtu "{dst_dir}" "{src_dir}"'
             
-        for deep_item in deep_items:
-            status = deep_item["status"]
-            if status == "synced":
-                continue
-                
-            sub_item_path = f"{item_rel_path}/{deep_item['relative_path']}"
-            is_dir = deep_item["is_dir"]
+        # 2. Local to Remote
+        elif src_cfg["server"] == "local" and bk_cfg["server"] != "local":
+            rc = remotes[bk_cfg["server"]]
+            cmd1 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" "{src_dir}" {rc.get("user")}@{rc.get("host")}:"{dst_dir}"'
+            cmd2 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" {rc.get("user")}@{rc.get("host")}:"{dst_dir}" "{src_dir}"'
             
-            # Backup: Only Source / Out of sync
-            if status in ("only_source", "pending_sync"):
-                if not is_parent_queued(sub_item_path, queued_backup_parents):
-                    cmd = build_cmd(src_cfg, bk_cfg, sub_item_path)
-                    await executor.start_task(cmd, queue_name="fs")
-                    commands.append(cmd)
-                    if is_dir:
-                        queued_backup_parents.append(sub_item_path)
-                        
-            # Restore: Only Backup / Out of sync
-            if status in ("only_backup", "pending_sync"):
-                if not is_parent_queued(sub_item_path, queued_restore_parents):
-                    cmd = build_cmd(bk_cfg, src_cfg, sub_item_path)
-                    await executor.start_task(cmd, queue_name="fs")
-                    commands.append(cmd)
-                    if is_dir:
-                        queued_restore_parents.append(sub_item_path)
-                        
-        return {"message": f"Bidirectional sync queued {len(commands)} individual copy tasks.", "commands": commands}
+        # 3. Remote to Local
+        elif src_cfg["server"] != "local" and bk_cfg["server"] == "local":
+            rc = remotes[src_cfg["server"]]
+            cmd1 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" {rc.get("user")}@{rc.get("host")}:"{src_dir}" "{dst_dir}"'
+            cmd2 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" "{dst_dir}" {rc.get("user")}@{rc.get("host")}:"{src_dir}"'
+            
+        # 4. Remote to Remote (Same Server)
+        elif src_cfg["server"] == bk_cfg["server"]:
+            rc = remotes[src_cfg["server"]]
+            cmd1 = f'ssh -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" {rc.get("user")}@{rc.get("host")} "rsync -rtu \\"{src_dir}\\" \\"{dst_dir}\\""'
+            cmd2 = f'ssh -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" {rc.get("user")}@{rc.get("host")} "rsync -rtu \\"{dst_dir}\\" \\"{src_dir}\\""'
+            
+        else:
+            raise HTTPException(status_code=400, detail="Multi-server remote sync not supported.")
+            
+        await executor.start_task(cmd1, queue_name="fs")
+        await executor.start_task(cmd2, queue_name="fs")
+        return {"message": "Bidirectional rsync sync tasks queued successfully.", "commands": [cmd1, cmd2]}
         
     elif request.direction == "backup":
         cmd = build_cmd(src_cfg, bk_cfg, item_rel_path)
@@ -1265,5 +1269,323 @@ async def sync_library_item(request: LibrarySyncRequest):
     await executor.start_task(cmd, queue_name="fs")
     return {"message": "Sync copy task queued successfully.", "command": cmd}
 
-    # THIS MUST BE THE VERY LAST THING IN THE FILE
+async def run_pipeline_command(task_id: str, command: str) -> bool:
+    database.update_task_status(task_id, "Running", "")
+    database.update_task_start_time(task_id, datetime.now().isoformat())
+    
+    try:
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        async def read_stream(stream):
+            while True:
+                chunk = await stream.read(1024)
+                if not chunk:
+                    break
+                decoded = chunk.decode('utf-8', errors='replace').replace('\r', '\n')
+                database.append_task_output(task_id, decoded)
+                await asyncio.sleep(0.01)
+                
+        await asyncio.gather(
+            read_stream(process.stdout),
+            read_stream(process.stderr)
+        )
+        
+        await process.wait()
+        
+        end_time = datetime.now().isoformat()
+        if process.returncode == 0:
+            database.update_task_status(task_id, "Completed", end_time)
+            return True
+        else:
+            database.update_task_status(task_id, f"Failed (Exit Code {process.returncode})", end_time)
+            return False
+            
+    except Exception as e:
+        end_time = datetime.now().isoformat()
+        database.append_task_output(task_id, f"\nPipeline error: {str(e)}")
+        database.update_task_status(task_id, "Failed (Exception)", end_time)
+        return False
+
+async def run_conversion_pipeline_task(
+    library_name: str,
+    relative_path: str,
+    profile_name: str,
+    t1_id: str,
+    t2_id: str,
+    t3_id: str
+):
+    import os
+    import uuid
+    import shutil
+    import subprocess
+    from datetime import datetime
+    import database
+    import command_builder
+    
+    config = command_builder.load_config()
+    libraries = config.get("libraries", {})
+    remotes = config.get("remote_servers", {})
+    profiles = config.get("ffmpeg", {}).get("profiles", {})
+    
+    lib = libraries[library_name]
+    src_cfg = lib.get("source")
+    server = src_cfg["server"]
+    base_path = src_cfg["path"].rstrip("/")
+    rel_path = relative_path.replace("\\", "/")
+    
+    src_full = f"{base_path}/{rel_path}"
+    filename = rel_path.split("/")[-1]
+    name_base, ext = os.path.splitext(filename)
+    
+    profile = profiles.get(profile_name, {})
+    out_ext = ext
+    allowed_exts = profile.get("allowed_extensions", [])
+    if allowed_exts:
+        if ext.lower() not in allowed_exts:
+            out_ext = allowed_exts[0]
+            
+    suffix = f"_{profile_name.replace(' ', '_')}"
+    candidate = f"{name_base}{suffix}{out_ext}"
+    
+    def file_exists(path):
+        if server == "local":
+            return os.path.exists(path)
+        else:
+            rc = remotes[server]
+            cmd = [
+                "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc["key_path"],
+                f"{rc['user']}@{rc['host']}", f"test -e '{path}'"
+            ]
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return res.returncode == 0
+            
+    parent_rel_path = "/".join(rel_path.split("/")[:-1])
+    parent_full_path = f"{base_path}/{parent_rel_path}" if parent_rel_path else base_path
+    
+    counter = 1
+    dest_filename = candidate
+    while file_exists(f"{parent_full_path}/{dest_filename}"):
+        dest_filename = f"{name_base}{suffix}_{counter}{out_ext}"
+        counter += 1
+        
+    dest_full_path = f"{parent_full_path}/{dest_filename}"
+    
+    conversion_temp = "/home/sayang/Programs/pareo/conversion_temp"
+    os.makedirs(conversion_temp, exist_ok=True)
+    
+    temp_src_file = ""
+    temp_dst_file = ""
+    
+    # --- STAGE 1: COPY TO CONVERSION MACHINE ---
+    if server == "local":
+        database.update_task_status(t1_id, "Running")
+        database.update_task_start_time(t1_id, datetime.now().isoformat())
+        database.append_task_output(t1_id, "Source file is already local. Skipping copy stage.")
+        database.update_task_status(t1_id, "Completed", datetime.now().isoformat())
+        
+        local_src_file = src_full
+        local_dst_file = dest_full_path
+    else:
+        temp_src_id = str(uuid.uuid4())
+        temp_src_file = os.path.join(conversion_temp, f"{temp_src_id}_{filename}")
+        temp_dst_file = os.path.join(conversion_temp, f"{temp_src_id}_{dest_filename}")
+        
+        rc = remotes[server]
+        copy_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" -r {rc.get("user")}@{rc.get("host")}:"{src_full}" "{temp_src_file}"'
+        
+        success = await run_pipeline_command(t1_id, copy_cmd)
+        if not success:
+            end_time = datetime.now().isoformat()
+            database.update_task_status(t2_id, "Failed (Dependency Failed)", end_time)
+            database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
+            if os.path.exists(temp_src_file): os.remove(temp_src_file)
+            return
+            
+        local_src_file = temp_src_file
+        local_dst_file = temp_dst_file
+        
+    # --- STAGE 2: CONVERT ---
+    flags = profile.get("flags", "")
+    convert_cmd = f'ffmpeg -y -i "{local_src_file}" {flags} "{local_dst_file}"'
+    
+    success = await run_pipeline_command(t2_id, convert_cmd)
+    if not success:
+        end_time = datetime.now().isoformat()
+        database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
+        if temp_src_file and os.path.exists(temp_src_file): os.remove(temp_src_file)
+        if temp_dst_file and os.path.exists(temp_dst_file): os.remove(temp_dst_file)
+        return
+        
+    # --- STAGE 3: BRING BACK CONVERTED FILE ---
+    if server == "local":
+        database.update_task_status(t3_id, "Running")
+        database.update_task_start_time(t3_id, datetime.now().isoformat())
+        database.append_task_output(t3_id, "Destination file is already local. Skipping bring-back stage.")
+        database.update_task_status(t3_id, "Completed", datetime.now().isoformat())
+    else:
+        rc = remotes[server]
+        bring_back_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" "{temp_dst_file}" {rc.get("user")}@{rc.get("host")}:"{dest_full_path}"'
+        
+        success = await run_pipeline_command(t3_id, bring_back_cmd)
+        
+        if os.path.exists(temp_src_file): os.remove(temp_src_file)
+        if os.path.exists(temp_dst_file): os.remove(temp_dst_file)
+
+@app.post("/api/libraries/media-info")
+def get_media_info(request: MediaInfoRequest):
+    config = command_builder.load_config()
+    libraries = config.get("libraries", {})
+    remotes = config.get("remote_servers", {})
+    
+    if request.library_name not in libraries:
+        raise HTTPException(status_code=404, detail="Library not configured.")
+        
+    lib = libraries[request.library_name]
+    src_cfg = lib.get("source")
+    
+    server = src_cfg["server"]
+    base_path = src_cfg["path"].rstrip("/")
+    rel_path = request.relative_path.replace("\\", "/")
+    full_path = f"{base_path}/{rel_path}"
+    
+    import json
+    import subprocess
+    
+    if not is_path_allowed(full_path, None if server == "local" else server):
+        raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed roots.")
+        
+    if server == "local":
+        cmd = [
+            "ffprobe", "-v", "quiet", "-print_format", "json",
+            "-show_format", "-show_streams", full_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    else:
+        if server not in remotes:
+            raise HTTPException(status_code=400, detail="Remote server not configured.")
+        rc = remotes[server]
+        ffprobe_cmd = f"env PATH=\\\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\\\" ffprobe -v quiet -print_format json -show_format -show_streams '{full_path}'"
+        cmd = [
+            "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc.get("key_path"),
+            f"{rc.get('user')}@{rc.get('host')}", ffprobe_cmd
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
+    if res.returncode != 0:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch media info: {res.stderr.strip()}")
+        
+    try:
+        data = json.loads(res.stdout)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to parse ffprobe output.")
+        
+    streams = data.get("streams", [])
+    format_data = data.get("format", {})
+    
+    try:
+        duration_sec = float(format_data.get("duration", 0))
+    except (ValueError, TypeError):
+        duration_sec = 0
+        
+    hours, remainder = divmod(int(duration_sec), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    duration_str = f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
+    
+    details = {
+        "filename": format_data.get("filename", "").split("/")[-1],
+        "format": format_data.get("format_long_name", "Unknown"),
+        "duration": duration_str,
+        "size": f"{round(int(format_data.get('size', 0)) / (1024*1024), 2)} MB" if format_data.get("size") else "0 MB",
+        "bitrate": f"{round(int(format_data.get('bit_rate', 0)) / 1000, 2)} kbps" if format_data.get("bit_rate") else "Unknown",
+        "video": [],
+        "audio": [],
+        "subtitle": []
+    }
+    
+    for s in streams:
+        codec_type = s.get("codec_type")
+        codec_name = s.get("codec_name", "unknown")
+        
+        if codec_type == "video":
+            width = s.get("width", "unknown")
+            height = s.get("height", "unknown")
+            fps_eval = s.get("avg_frame_rate", "0/0")
+            fps = "unknown"
+            if "/" in fps_eval:
+                try:
+                    num, den = map(int, fps_eval.split("/"))
+                    if den > 0:
+                        fps = round(num / den, 2)
+                except Exception:
+                    pass
+            details["video"].append({
+                "codec": codec_name.upper(),
+                "resolution": f"{width}x{height}",
+                "fps": fps
+            })
+        elif codec_type == "audio":
+            channels = s.get("channels", "unknown")
+            lang = s.get("tags", {}).get("language", "unknown")
+            details["audio"].append({
+                "codec": codec_name.upper(),
+                "channels": channels,
+                "language": lang
+            })
+        elif codec_type == "subtitle":
+            lang = s.get("tags", {}).get("language", "unknown")
+            details["subtitle"].append({
+                "codec": codec_name,
+                "language": lang
+            })
+            
+    return details
+
+@app.post("/api/libraries/media-convert")
+async def start_media_conversion(request: MediaConvertRequest, background_tasks: BackgroundTasks):
+    config = command_builder.load_config()
+    libraries = config.get("libraries", {})
+    profiles = config.get("ffmpeg", {}).get("profiles", {})
+    
+    if request.library_name not in libraries:
+        raise HTTPException(status_code=404, detail="Library not configured.")
+    if request.profile_name not in profiles:
+        raise HTTPException(status_code=404, detail="Profile not configured.")
+        
+    filename = request.relative_path.split("/")[-1]
+    
+    t1_id = str(uuid.uuid4())
+    t2_id = str(uuid.uuid4())
+    t3_id = str(uuid.uuid4())
+    
+    now_time = datetime.now().isoformat()
+    
+    t1_name = f"[Stage 1/3] Copy to Conversion Machine: {filename}"
+    database.insert_task(t1_id, t1_name, "Pending", now_time, "pipeline")
+    
+    t2_name = f"[Stage 2/3] Convert ({request.profile_name}): {filename}"
+    database.insert_task(t2_id, t2_name, "Pending", now_time, "pipeline")
+    
+    t3_name = f"[Stage 3/3] Bring back Converted File: {filename}"
+    database.insert_task(t3_id, t3_name, "Pending", now_time, "pipeline")
+    
+    background_tasks.add_task(
+        run_conversion_pipeline_task,
+        request.library_name,
+        request.relative_path,
+        request.profile_name,
+        t1_id,
+        t2_id,
+        t3_id
+    )
+    
+    return {
+        "message": "Media conversion pipeline started.",
+        "tasks": [t1_id, t2_id, t3_id]
+    }
+
+# THIS MUST BE THE VERY LAST THING IN THE FILE
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -1901,6 +1901,15 @@ function createLibraryRow(item) {
         `;
     }
     
+    // Info / Media Analysis Action
+    if (!isDir) {
+        actionButtons += `
+            <button class="action-icon-btn" onclick="showMediaInfo('${item.relative_path.replace(/'/g, "\\'")}')" title="View Media Info & Conversion" style="color: var(--blue); margin-left: 6px;">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            </button>
+        `;
+    }
+    
     // Rename Action
     actionButtons += `
         <button class="action-icon-btn" onclick="renameLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', ${item.source_exists}, ${item.backup_exists}, '${item.name.replace(/'/g, "\\'")}')" title="Rename File/Folder" style="color: var(--yellow); margin-left: 6px;">
@@ -2108,4 +2117,165 @@ function showTemporarySyncToast(message) {
             document.body.removeChild(toast);
         }, 300);
     }, 4000);
+}
+
+async function showMediaInfo(relativePath) {
+    showLoading();
+    try {
+        const response = await fetch('/api/libraries/media-info', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Pareo-Auth': localStorage.getItem('pareo_auth_token') || ''
+            },
+            body: JSON.stringify({
+                library_name: currentLibraryName,
+                relative_path: relativePath
+            })
+        });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            alert(`Failed to fetch media details: ${err.detail}`);
+            return;
+        }
+        
+        const details = await response.json();
+        
+        // Populate Title
+        document.getElementById('media-info-title').textContent = `Media Info: ${details.filename}`;
+        
+        // Populate Stream Information
+        const detailsDiv = document.getElementById('media-info-details');
+        detailsDiv.innerHTML = `
+            <div><strong>Format:</strong> ${details.format}</div>
+            <div><strong>Duration:</strong> ${details.duration}</div>
+            <div><strong>Size:</strong> ${details.size}</div>
+            <div><strong>Bitrate:</strong> ${details.bitrate}</div>
+        `;
+        
+        if (details.video && details.video.length > 0) {
+            details.video.forEach((v, index) => {
+                detailsDiv.innerHTML += `
+                    <div style="grid-column: 1 / -1; margin-top: 5px; color: #16a085; border-top: 1px solid #e9ecef; padding-top: 5px;">
+                        <strong>Video Stream #${index + 1}:</strong> ${v.codec} | ${v.resolution} | ${v.fps} fps
+                    </div>
+                `;
+            });
+        }
+        
+        if (details.audio && details.audio.length > 0) {
+            details.audio.forEach((a, index) => {
+                detailsDiv.innerHTML += `
+                    <div style="grid-column: 1 / -1; color: #d35400;">
+                        <strong>Audio Stream #${index + 1}:</strong> ${a.codec} | ${a.channels} ch | Lang: ${a.language}
+                    </div>
+                `;
+            });
+        }
+        
+        if (details.subtitle && details.subtitle.length > 0) {
+            detailsDiv.innerHTML += `
+                <div style="grid-column: 1 / -1; color: #7f8c8d; font-size: 0.95em;">
+                    <strong>Subtitles:</strong> ${details.subtitle.map(s => `${s.codec.toUpperCase()} (${s.language})`).join(', ')}
+                </div>
+            `;
+        }
+        
+        // Populate Conversion Profiles
+        const configResponse = await fetch('/api/config/ffmpeg', {
+            headers: {
+                'X-Pareo-Auth': localStorage.getItem('pareo_auth_token') || ''
+            }
+        });
+        
+        const config = await configResponse.json();
+        const profiles = config.profiles || {};
+        
+        const profilesDiv = document.getElementById('media-conversion-profiles');
+        profilesDiv.innerHTML = '';
+        
+        const fileExt = '.' + details.filename.split('.').pop().toLowerCase();
+        
+        let hasProfiles = false;
+        
+        for (const [name, p] of Object.entries(profiles)) {
+            const allowed = p.allowed_extensions || [];
+            const isAllowed = allowed.length === 0 || allowed.includes(fileExt) || 
+                              (name.toLowerCase().includes('subtitle') && (fileExt === '.mkv' || fileExt === '.mp4')) ||
+                              (name.toLowerCase().includes('audio') && (fileExt === '.mkv' || fileExt === '.mp4' || fileExt === '.avi'));
+                              
+            if (isAllowed) {
+                hasProfiles = true;
+                const profileCard = document.createElement('div');
+                profileCard.style.cssText = `
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    background: #f8f9fa;
+                    padding: 12px 15px;
+                    border-radius: 4px;
+                    border: 1px solid #e9ecef;
+                    font-size: 0.9em;
+                `;
+                
+                profileCard.innerHTML = `
+                    <div style="flex-grow: 1; padding-right: 15px;">
+                        <div style="font-weight: bold; color: #2c3e50;">${name}</div>
+                        <div style="color: #666; font-size: 0.85em; font-family: monospace; word-break: break-all; margin-top: 3px;">${p.flags}</div>
+                    </div>
+                    <button class="btn btn-sm" onclick="startMediaConversion('${relativePath.replace(/'/g, "\\'")}', '${name.replace(/'/g, "\\'")}')" style="background: #2980b9; color: #fff; border: none; font-weight: bold; padding: 6px 12px; cursor: pointer; border-radius: 4px; white-space: nowrap;">Convert</button>
+                `;
+                profilesDiv.appendChild(profileCard);
+            }
+        }
+        
+        if (!hasProfiles) {
+            profilesDiv.innerHTML = '<div style="color: #666; font-style: italic; font-size: 0.9em;">No matching conversion profiles available for this file type.</div>';
+        }
+        
+        document.getElementById('media-info-modal').style.display = 'flex';
+        
+    } catch (error) {
+        console.error("Error showing media info:", error);
+    } finally {
+        hideLoading();
+    }
+}
+
+function closeMediaInfoModal() {
+    document.getElementById('media-info-modal').style.display = 'none';
+}
+
+async function startMediaConversion(relativePath, profileName) {
+    closeMediaInfoModal();
+    showLoading();
+    try {
+        const response = await fetch('/api/libraries/media-convert', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Pareo-Auth': localStorage.getItem('pareo_auth_token') || ''
+            },
+            body: JSON.stringify({
+                library_name: currentLibraryName,
+                relative_path: relativePath,
+                profile_name: profileName
+            })
+        });
+        
+        if (!response.ok) {
+            const err = await response.json();
+            alert(`Failed to start media conversion: ${err.detail}`);
+            return;
+        }
+        
+        const result = await response.json();
+        showTemporarySyncToast("Media conversion pipeline successfully started!");
+        
+    } catch (error) {
+        console.error("Error starting media conversion:", error);
+    } finally {
+        hideLoading();
+    }
 }
