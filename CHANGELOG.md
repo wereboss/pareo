@@ -4,6 +4,18 @@ All notable changes to the **Pareo Command Engine** project are documented in th
 
 ---
 
+## [1.4.0] - 2026-07-14
+### Added
+- **Media Information Inspector:** Solarized Blue info action button next to files in the library listing, bringing up stream details (codecs, resolutions, frame rates, audio channels, and subtitle languages) fetched dynamically via `ffprobe` (locally or remotely over SSH).
+- **Stage-by-Stage Media Conversion Pipeline:** Pipeline queue allowing conversion of media files using customizable FFMPEG profiles. Copying from remote servers, encoding locally on the conversion machine, and returning the output to target folders are tracked sequentially.
+- **Folder List Status Filtering:** Status-based select filter dropdown to easily filter library folders and files by sync state (Synced, Partial-Sync, Pending Sync, Only Source, Only Backup).
+
+### Changed
+- **rsync Folder Sync:** Replaced the loop-heavy manual folder sync algorithm with a robust, native two-stage `rsync -rtu` bidirectional synchronization setup.
+- **Path Fallback resolution:** Allowed media info inspection to dynamically check both source and backup paths, falling back automatically if files only exist on one side.
+- **Atomic Temp Path Conversion:** Enforced that all media conversions write to intermediate temporary files inside a secure cache directory first, moving them to library directories only upon successful completion and guaranteeing cleanup via `try...finally` blocks.
+- **Lineage Directory Creation:** Ensured parent folder lineages are pre-created (`mkdir -p`) on both local and remote hosts before synchronization tasks begin.
+
 ## [1.3.0] - 2026-07-06
 ### Added
 - **Master Password Security:** Stateless instance lock screen prompting for a master password. If not configured, prompts the user to set a password on first launch.
