@@ -2146,6 +2146,7 @@ async function showMediaInfo(relativePath) {
                     errorMsg = await response.text();
                 } catch (textErr) {}
             }
+            console.error("Failed to fetch media details:", errorMsg);
             alert(`Failed to fetch media details: ${errorMsg}`);
             return;
         }
