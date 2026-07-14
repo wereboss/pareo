@@ -25,6 +25,16 @@ def init_db():
                 queue_name TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS library_cache (
+                library_name TEXT,
+                subpath TEXT,
+                deep_scan INTEGER,
+                cache_data TEXT,
+                cached_at TEXT,
+                PRIMARY KEY (library_name, subpath, deep_scan)
+            )
+        """)
         conn.commit()
         
         # Ensure queue_name column exists for older databases (migration fallback)
@@ -204,3 +214,28 @@ def purge_tasks(age: str) -> int:
         res = conn.execute(query, params)
         conn.commit()
         return res.rowcount
+
+def get_cached_library(library_name: str, subpath: str, deep_scan: bool) -> str:
+    """Retrieves cached library data as JSON string if exists, otherwise None."""
+    ds_val = 1 if deep_scan else 0
+    with get_conn() as conn:
+        cur = conn.execute(
+            "SELECT cache_data FROM library_cache WHERE library_name = ? AND subpath = ? AND deep_scan = ?",
+            (library_name, subpath, ds_val)
+        )
+        row = cur.fetchone()
+        return row["cache_data"] if row else None
+
+def set_cached_library(library_name: str, subpath: str, deep_scan: bool, cache_data: str):
+    """Sets/updates cached library data as JSON string."""
+    ds_val = 1 if deep_scan else 0
+    cached_at = datetime.now().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO library_cache (library_name, subpath, deep_scan, cache_data, cached_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (library_name, subpath, ds_val, cache_data, cached_at)
+        )
+        conn.commit()

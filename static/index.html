@@ -192,7 +192,7 @@
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
                     <div style="display: flex; align-items: center; gap: 15px;">
                         <button class="btn btn-sm" onclick="showLibrariesList()" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold;">← Libraries</button>
-                        <h4 id="library-detail-title" style="margin: 0;">Library Sync Details</h4>
+                        <h4 style="margin: 0; display: flex; align-items: center;"><span id="library-detail-title">Library Sync Details</span><span id="library-cached-indicator" style="display: none; font-size: 0.65em; background: var(--yellow); color: var(--base03); padding: 3px 6px; border-radius: 4px; font-weight: bold; margin-left: 10px; white-space: nowrap;">Cached</span></h4>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <input type="text" id="library-search" oninput="filterLibraryItems()" placeholder="Search library items..." style="padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan); width: 200px;">

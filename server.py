@@ -1065,7 +1065,7 @@ def list_libraries():
     return config.get("libraries", {})
 
 @app.get("/api/libraries/browse")
-def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False):
+def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False, nocache: bool = False):
     """Gathers sync comparison for a library's source and backup folders."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
@@ -1079,7 +1079,29 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
     if not src_cfg or not bk_cfg:
         raise HTTPException(status_code=400, detail="Library source and backup settings must be configured.")
         
-    # Get top-level source metadata
+    import json
+    
+    # 1. Try to fetch from cache if nocache is False
+    if not nocache:
+        try:
+            cached_data = database.get_cached_library(library_name, subpath, deep_scan)
+            if cached_data:
+                cached_items = json.loads(cached_data)
+                return {
+                    "library_name": library_name,
+                    "subpath": subpath,
+                    "deep_scan": deep_scan,
+                    "source_base": src_cfg["path"],
+                    "source_server": src_cfg["server"],
+                    "backup_base": bk_cfg["path"],
+                    "backup_server": bk_cfg["server"],
+                    "items": cached_items,
+                    "cached": True
+                }
+        except Exception:
+            pass
+            
+    # 2. Get top-level source metadata
     try:
         if src_cfg["server"] == "local":
             src_top = get_local_library_metadata(src_cfg["path"], subpath, deep_scan=False)
@@ -1131,6 +1153,12 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
                 else:
                     item["status"] = "full_sync"
                     
+    # 3. Update cache
+    try:
+        database.set_cached_library(library_name, subpath, deep_scan, json.dumps(top_items))
+    except Exception:
+        pass
+        
     return {
         "library_name": library_name,
         "subpath": subpath,
@@ -1139,7 +1167,8 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
         "source_server": src_cfg["server"],
         "backup_base": bk_cfg["path"],
         "backup_server": bk_cfg["server"],
-        "items": top_items
+        "items": top_items,
+        "cached": False
     }
 
 @app.post("/api/libraries/sync")

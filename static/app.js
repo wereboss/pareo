@@ -1580,6 +1580,7 @@ function closeProcessLogsModal() {
 let currentLibraryName = "";
 let currentLibrarySubpath = "";
 let currentLibraryItems = [];
+let currentLibraryIsCached = false;
 let currentLibrarySourceBase = "";
 let currentLibrarySourceServer = "";
 let currentLibraryBackupBase = "";
@@ -1761,7 +1762,34 @@ async function fetchLibraryItems(deepScan = false) {
         currentLibraryBackupServer = data.backup_server || "";
         
         currentLibraryItems = data.items || [];
+        currentLibraryIsCached = !!data.cached;
+        
+        const cachedIndicator = document.getElementById('library-cached-indicator');
+        if (cachedIndicator) {
+            cachedIndicator.style.display = currentLibraryIsCached ? 'inline-block' : 'none';
+        }
+        
         renderLibraryItems(currentLibraryItems);
+        
+        // If results are cached, lazy-load fresh data in the background
+        if (currentLibraryIsCached) {
+            const freshUrl = url + "&nocache=true";
+            fetch(freshUrl)
+                .then(async (res) => {
+                    if (res.ok) {
+                        const freshData = await res.json();
+                        if (currentLibraryName === freshData.library_name && currentLibrarySubpath === freshData.subpath) {
+                            currentLibraryIsCached = false;
+                            if (cachedIndicator) {
+                                cachedIndicator.style.display = 'none';
+                            }
+                            currentLibraryItems = freshData.items || [];
+                            renderLibraryItems(currentLibraryItems);
+                        }
+                    }
+                })
+                .catch(err => console.error("Error loading fresh library items:", err));
+        }
     } catch (error) {
         console.error("Error loading library items:", error);
     } finally {
@@ -1819,6 +1847,10 @@ function createLibraryRow(item) {
         
     const nameSpan = document.createElement('span');
     nameSpan.innerHTML = iconHtml + (isDir ? `<span style="font-weight: bold; color: var(--cyan); cursor: pointer;">${item.name}</span>` : item.name);
+    if (currentLibraryIsCached) {
+        nameSpan.style.opacity = '0.55';
+        nameSpan.title = 'Showing cached results, loading latest in background...';
+    }
     
     if (isDir) {
         nameSpan.onclick = () => {
