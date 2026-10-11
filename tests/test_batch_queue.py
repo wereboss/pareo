@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
@@ -41,6 +42,14 @@ def test_database_batch_cancel_and_purge(tmp_path, monkeypatch):
     assert database.get_task("task-1") is None
     assert database.get_task("task-3") is None
     assert database.get_task("task-2") is not None
+
+def test_empty_batch_task_lists(tmp_path, monkeypatch):
+    test_db = tmp_path / "db_empty_batch.db"
+    monkeypatch.setattr(database, "DB_FILE", test_db)
+    database.init_db()
+
+    assert database.batch_cancel_tasks([]) == []
+    assert database.batch_purge_tasks([]) == []
 
 def test_batch_api_endpoints(batch_client):
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -86,3 +95,62 @@ def test_batch_api_endpoints(batch_client):
     assert database.get_task("b-task-1") is None
     assert database.get_task("b-task-2") is None
     assert database.get_task("b-task-3") is None
+
+def test_batch_operations_rbac_enforcement(batch_client):
+    # Setup users
+    admin = database.create_user("admin@pareo.local", "AdminPass123", role="Admin")
+    admin_session = database.create_session(admin["user_id"])
+    admin_token = admin_session["token"]
+
+    viewer = database.create_user("viewer@pareo.local", "ViewerPass123", role="Viewer")
+    viewer_session = database.create_session(viewer["user_id"])
+    viewer_token = viewer_session["token"]
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    database.insert_task("rbac-1", "echo 1", "Pending", now_iso, queue_name="default")
+
+    # Viewer gets 403 on cancel, retry, and purge
+    res = batch_client.post("/api/tasks/batch/cancel", json={"task_ids": ["rbac-1"]}, headers={"Authorization": f"Bearer {viewer_token}"})
+    assert res.status_code == 403
+
+    res = batch_client.post("/api/tasks/batch/retry", json={"task_ids": ["rbac-1"]}, headers={"Authorization": f"Bearer {viewer_token}"})
+    assert res.status_code == 403
+
+    res = batch_client.post("/api/tasks/batch/purge", json={"task_ids": ["rbac-1"]}, headers={"Authorization": f"Bearer {viewer_token}"})
+    assert res.status_code == 403
+
+    # Admin gets 200
+    res = batch_client.post("/api/tasks/batch/cancel", json={"task_ids": ["rbac-1"]}, headers={"Authorization": f"Bearer {admin_token}"})
+    assert res.status_code == 200
+    assert res.json()["cancelled_count"] == 1
+
+def test_executor_batch_functions(tmp_path, monkeypatch):
+    test_db = tmp_path / "exec_batch.db"
+    monkeypatch.setattr(database, "DB_FILE", test_db)
+    database.init_db()
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    database.insert_task("ex-1", "echo ex1", "Pending", now_iso, queue_name="default")
+    database.insert_task("ex-2", "echo ex2", "Failed", now_iso, queue_name="default")
+
+    async def run_executor_tests():
+        # Batch cancel
+        cancelled = await executor.batch_cancel_tasks(["ex-1"])
+        assert "ex-1" in cancelled
+        assert database.get_task("ex-1")["status"] == "Cancelled"
+
+        # Batch retry
+        retried = await executor.batch_retry_tasks(["ex-1", "ex-2"])
+        assert "ex-1" in retried
+        assert "ex-2" in retried
+
+        # Batch purge
+        database.update_task_status("ex-1", "Cancelled")
+        database.update_task_status("ex-2", "Completed")
+        purged = await executor.batch_purge_tasks(["ex-1", "ex-2"])
+        assert "ex-1" in purged
+        assert "ex-2" in purged
+        assert database.get_task("ex-1") is None
+        assert database.get_task("ex-2") is None
+
+    asyncio.run(run_executor_tests())

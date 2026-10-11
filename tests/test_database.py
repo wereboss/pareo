@@ -47,11 +47,15 @@ def test_database_indices(temp_db):
     assert "idx_tasks_status" in indices
     assert "idx_tasks_queue_status" in indices
     assert "idx_tasks_start_time" in indices
-    
+    assert "idx_users_email" in indices
+    assert "idx_sessions_token" in indices
+    assert "idx_sessions_expires" in indices
+
     assert "tasks(status)" in indices["idx_tasks_status"].replace(" ", "")
     assert "tasks(queue_name,status)" in indices["idx_tasks_queue_status"].replace(" ", "")
     assert "tasks(start_timeDESC)" in indices["idx_tasks_start_time"].replace(" ", "")
-    
+    assert "users(email)" in indices["idx_users_email"].replace(" ", "")
+
     conn.close()
 
 def test_task_crud_lifecycle(temp_db):

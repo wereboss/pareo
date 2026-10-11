@@ -9,6 +9,7 @@ SW_PATH = STATIC_DIR / "sw.js"
 ICONS_DIR = STATIC_DIR / "icons"
 INDEX_HTML = STATIC_DIR / "index.html"
 STYLE_CSS = STATIC_DIR / "style.css"
+APP_JS = STATIC_DIR / "app.js"
 
 def test_pwa_manifest_exists_and_valid():
     assert MANIFEST_PATH.is_file()
@@ -23,6 +24,11 @@ def test_pwa_manifest_exists_and_valid():
     assert "theme_color" in manifest_data
     assert "background_color" in manifest_data
 
+    # Check icon sizes in manifest
+    icon_sizes = [icon.get("sizes") for icon in manifest_data["icons"]]
+    assert "192x192" in icon_sizes
+    assert "512x512" in icon_sizes
+
 def test_service_worker_file():
     assert SW_PATH.is_file()
     sw_code = SW_PATH.read_text()
@@ -30,6 +36,8 @@ def test_service_worker_file():
     assert "addEventListener('install'" in sw_code or 'addEventListener("install"' in sw_code
     assert "addEventListener('activate'" in sw_code or 'addEventListener("activate"' in sw_code
     assert "addEventListener('fetch'" in sw_code or 'addEventListener("fetch"' in sw_code
+    # Network first for /api/ and SSE streams
+    assert "/api/" in sw_code
 
 def test_pwa_icons_exist_and_are_valid_png():
     icon_192 = ICONS_DIR / "icon-192.png"
@@ -45,16 +53,32 @@ def test_pwa_icons_exist_and_are_valid_png():
     assert icon_512.read_bytes().startswith(png_header)
     assert apple_icon.read_bytes().startswith(png_header)
 
-def test_index_html_pwa_linkage():
+def test_index_html_pwa_and_ios_meta_tags():
     html = INDEX_HTML.read_text()
     assert 'rel="manifest"' in html
     assert 'name="theme-color"' in html
     assert 'rel="apple-touch-icon"' in html
+    assert 'viewport-fit=cover' in html
+    assert 'name="apple-mobile-web-app-capable"' in html
+    assert 'name="apple-mobile-web-app-status-bar-style"' in html
     assert 'id="batch-action-dock"' in html
     assert 'id="auth-modal"' in html
 
+def test_service_worker_registration_in_frontend():
+    html = INDEX_HTML.read_text()
+    js = APP_JS.read_text()
+    assert "serviceWorker.register" in html or "serviceWorker.register" in js
+
 def test_style_css_safe_area_and_dock():
     css = STYLE_CSS.read_text()
+    assert "safe-area-inset-top" in css
     assert "safe-area-inset-bottom" in css
     assert ".batch-action-dock" in css
     assert ".task-checkbox" in css
+    assert ".dock-actions" in css
+
+def test_batch_action_dock_touch_targets():
+    css = STYLE_CSS.read_text()
+    # Batch action buttons meet 44px min height
+    assert ".dock-actions .btn" in css
+    assert "min-height: 44px" in css
