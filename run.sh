@@ -2,6 +2,7 @@
 
 # Pareo Launcher
 # Compatible with Sh, Bash, Zsh, and Fish
+# Default service port: 9046 (Override with PORT environment variable)
 
 # Resolve the root directory of this script to run correctly from anywhere
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -24,6 +25,7 @@ if ! command -v "$PYTHON_EXEC" >/dev/null 2>&1; then
     exit 1
 fi
 
-echo "[*] Starting Pareo Engine from $ROOT_DIR..."
+export PORT="${PORT:-9046}"
+echo "[*] Starting Pareo Engine on port $PORT from $ROOT_DIR..."
 # Exec replaces the shell process with python
 exec "$PYTHON_EXEC" "$ROOT_DIR/run.py"

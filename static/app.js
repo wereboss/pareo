@@ -1,57 +1,245 @@
-// Helper to retrieve the auth token, clearing it if it exceeds 2 days (session age)
-function getAuthToken() {
-    const token = localStorage.getItem('pareo_auth_token');
-    const timestamp = localStorage.getItem('pareo_auth_timestamp');
-    if (!token) return null;
-    
-    if (timestamp) {
-        const ageMs = Date.now() - parseInt(timestamp, 10);
-        const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
-        if (ageMs > twoDaysMs) {
-            console.log("[Pareo Auth] Session expired (older than 2 days). Clearing token.");
-            localStorage.removeItem('pareo_auth_token');
-            localStorage.removeItem('pareo_auth_timestamp');
-            return null;
-        }
-    } else {
-        // If there's a token but no timestamp (e.g. from prior setup), set it now
-        localStorage.setItem('pareo_auth_timestamp', Date.now().toString());
+/**
+ * Pareo V2 - Modernized Asynchronous Command & Orchestration Engine
+ * Frontend Single Page Application (SPA)
+ * 
+ * Features:
+ * - Frictionless No-Auth Mode (LAN access)
+ * - Native Server-Sent Events (SSE) Bus (/api/stream/events)
+ * - Dual Bespoke Signature Themes: Sony's Wipeout HUD & Fallout Atompunk Pip-Boy
+ * - Responsive Layout: Mobile task cards (<640px) & Desktop data grid
+ * - Smart Terminal Auto-Scroll Interlock
+ * - Accessible Non-Blocking Toast Notification Stack
+ */
+
+// Global State
+let loadedTasks = {};
+let tasksOffset = 0;
+const tasksLimit = 15;
+let hasMoreTasks = true;
+let ffmpegConfig = {};
+let fsConfig = {};
+let remotesConfig = {};
+let processConfig = {};
+let activeLogProcess = null;
+let logRefreshInterval = null;
+let processPollInterval = null;
+let filterDebounceTimeout = null;
+
+// Library state
+let currentLibraryName = "";
+let currentLibrarySubpath = "";
+let currentLibraryItems = [];
+let currentLibraryIsCached = false;
+let currentLibrarySourceBase = "";
+let currentLibrarySourceServer = "";
+let currentLibraryBackupBase = "";
+let currentLibraryBackupServer = "";
+
+// Auto-Scroll Interlock State Map: taskId -> { locked: boolean, userScrolled: boolean }
+const terminalScrollState = new Map();
+
+function getScrollState(taskId) {
+    if (!terminalScrollState.has(taskId)) {
+        terminalScrollState.set(taskId, { locked: true, userScrolled: false });
     }
-    return token;
+    return terminalScrollState.get(taskId);
 }
 
-// Global fetch override for transparent auth handling
-const originalFetch = window.fetch;
-window.fetch = async function (url, options) {
-    const token = getAuthToken();
+function handleUserTerminalScroll(taskId) {
+    const el = document.getElementById(`terminal-card-${taskId}`) || document.getElementById(`terminal-${taskId}`);
+    if (!el) return;
+    const state = getScrollState(taskId);
     
-    if (token) {
-        let opt = options || {};
-        if (opt.headers instanceof Headers) {
-            opt.headers.set('X-Pareo-Auth', token);
-        } else if (Array.isArray(opt.headers)) {
-            opt.headers.push(['X-Pareo-Auth', token]);
+    // Check if scrolled near the bottom (within 24px)
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    
+    if (!isAtBottom) {
+        state.locked = false;
+        state.userScrolled = true;
+        updateScrollButtonState(taskId, false);
+    } else {
+        state.locked = true;
+        state.userScrolled = false;
+        updateScrollButtonState(taskId, true);
+    }
+}
+
+function toggleScrollLock(taskId, btn) {
+    const state = getScrollState(taskId);
+    state.locked = !state.locked;
+    updateScrollButtonState(taskId, state.locked);
+    if (state.locked) {
+        const el = document.getElementById(`terminal-card-${taskId}`) || document.getElementById(`terminal-${taskId}`);
+        if (el) el.scrollTop = el.scrollHeight;
+    }
+}
+
+function updateScrollButtonState(taskId, locked) {
+    const btns = document.querySelectorAll(`[onclick*="toggleScrollLock('${taskId}'"]`);
+    btns.forEach(btn => {
+        if (locked) {
+            btn.classList.add('btn-lock-active');
+            btn.textContent = '🔒 LOCK SCROLL';
         } else {
-            opt.headers = opt.headers || {};
-            opt.headers['X-Pareo-Auth'] = token;
+            btn.classList.remove('btn-lock-active');
+            btn.textContent = '🔓 SCROLL PAUSED';
         }
-        options = opt;
+    });
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatTime(isoString) {
+    if (!isoString) return '--';
+    const d = new Date(isoString);
+    return d.toLocaleString(undefined, { 
+        month: 'short', day: '2-digit', 
+        hour: '2-digit', minute: '2-digit', second: '2-digit', 
+        hour12: false 
+    });
+}
+
+// --------------------------------------------------------------------------
+// BESPOKE DUAL-THEME ENGINE
+// --------------------------------------------------------------------------
+function initTheme() {
+    const saved = localStorage.getItem('pareo_theme') || 'wipeout';
+    setTheme(saved, false);
+}
+
+function setTheme(theme, notify = true) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('pareo_theme', theme);
+    
+    const label = document.getElementById('theme-label');
+    const icon = document.getElementById('theme-icon');
+    if (theme === 'fallout-pipboy') {
+        if (label) label.textContent = 'ATOMPUNK';
+        if (icon) icon.textContent = '☢';
+    } else {
+        if (label) label.textContent = 'WIPEOUT';
+        if (icon) icon.textContent = '⚡';
     }
     
-    const response = await originalFetch(url, options);
-    if (response.status === 401) {
-        showAuthOverlay('login');
+    if (notify) {
+        showToast(`Theme switched to ${theme === 'fallout-pipboy' ? "Fallout Atompunk Pip-Boy 3000" : "Sony's Wipeout HUD"}`, 'info', 2500);
     }
-    return response;
-};
+}
 
-// NEW: Track which tasks have an active, high-speed targeted poll running
-const activePolls = new Set();
-// NEW: Global state to hold the pipeline configuration
-let ffmpegConfig = {};
+function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'wipeout';
+    const next = current === 'wipeout' ? 'fallout-pipboy' : 'wipeout';
+    setTheme(next, true);
+}
 
-// NEW: Global loading progress bar control
-function showLoading(percent = 30) {
+// --------------------------------------------------------------------------
+// NON-BLOCKING TOAST NOTIFICATION STACK
+// --------------------------------------------------------------------------
+function showToast(message, type = 'info', durationMs = 4000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', 'status');
+
+    const icons = {
+        success: '✓',
+        error: '✕',
+        warning: '▲',
+        info: '◈'
+    };
+
+    toast.innerHTML = `
+        <span class="toast-icon" aria-hidden="true">${icons[type] || '◈'}</span>
+        <span class="toast-message">${escapeHtml(message)}</span>
+        <button class="toast-close" aria-label="Dismiss notification" onclick="this.parentElement.remove()">×</button>
+    `;
+
+    container.appendChild(toast);
+
+    if (durationMs > 0) {
+        setTimeout(() => {
+            toast.style.transition = 'opacity 250ms, transform 250ms';
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-10px)';
+            setTimeout(() => toast.remove(), 250);
+        }, durationMs);
+    }
+}
+
+// Alias for backwards compatibility
+function showTemporarySyncToast(msg) {
+    showToast(msg, 'success');
+}
+
+// --------------------------------------------------------------------------
+// NON-BLOCKING IN-APP MODAL CONFIRM & PROMPT DIALOGS
+// --------------------------------------------------------------------------
+let appDialogResolver = null;
+
+function showAppConfirm(message) {
+    return new Promise((resolve) => {
+        appDialogResolver = resolve;
+        const modal = document.getElementById('dialog-modal');
+        const title = document.getElementById('dialog-modal-title');
+        const msg = document.getElementById('dialog-modal-message');
+        const input = document.getElementById('dialog-modal-input');
+        const cancelBtn = document.getElementById('dialog-modal-cancel');
+        
+        title.textContent = 'Confirm Action';
+        msg.textContent = message;
+        input.style.display = 'none';
+        cancelBtn.style.display = 'inline-flex';
+        modal.style.display = 'flex';
+    });
+}
+
+function showAppPrompt(message, defaultValue = '') {
+    return new Promise((resolve) => {
+        appDialogResolver = resolve;
+        const modal = document.getElementById('dialog-modal');
+        const title = document.getElementById('dialog-modal-title');
+        const msg = document.getElementById('dialog-modal-message');
+        const input = document.getElementById('dialog-modal-input');
+        const cancelBtn = document.getElementById('dialog-modal-cancel');
+        
+        title.textContent = 'User Input Required';
+        msg.textContent = message;
+        input.style.display = 'block';
+        input.value = defaultValue;
+        cancelBtn.style.display = 'inline-flex';
+        modal.style.display = 'flex';
+        setTimeout(() => input.focus(), 100);
+    });
+}
+
+function closeAppDialog(confirmed) {
+    const modal = document.getElementById('dialog-modal');
+    const input = document.getElementById('dialog-modal-input');
+    modal.style.display = 'none';
+    if (appDialogResolver) {
+        if (!confirmed) {
+            appDialogResolver(null);
+        } else if (input.style.display !== 'none') {
+            appDialogResolver(input.value);
+        } else {
+            appDialogResolver(true);
+        }
+        appDialogResolver = null;
+    }
+}
+
+// Global Loading Progress Bar
+function showLoading(percent = 40) {
     const bar = document.getElementById('global-loading-bar');
     if (!bar) return;
     bar.style.opacity = '1';
@@ -70,28 +258,163 @@ function hideLoading() {
     }, 200);
 }
 
-// NEW: Helper function to make ISO timestamps human-readable (e.g., Jun 08, 14:30:00)
-function formatTime(isoString) {
-    if (!isoString) return '--';
-    const d = new Date(isoString);
-    return d.toLocaleString(undefined, { 
-        month: 'short', day: '2-digit', 
-        hour: '2-digit', minute: '2-digit', second: '2-digit', 
-        hour12: false 
+// --------------------------------------------------------------------------
+// REAL-TIME SERVER-SENT EVENTS (SSE) BUS INTEGRATION
+// --------------------------------------------------------------------------
+function initEventStream() {
+    console.log('[SSE] Connecting to real-time events stream...');
+    const evtSource = new EventSource('/api/stream/events');
+    
+    evtSource.addEventListener('connected', () => {
+        console.log('[SSE] Stream connected successfully.');
     });
+    
+    evtSource.addEventListener('task_update', (e) => {
+        try {
+            const task = JSON.parse(e.data);
+            updateTaskInUI(task);
+        } catch (err) {
+            console.error('[SSE] Error handling task_update:', err);
+        }
+    });
+    
+    evtSource.addEventListener('task_output', (e) => {
+        try {
+            const payload = JSON.parse(e.data);
+            appendLogChunk(payload.task_id, payload.chunk);
+        } catch (err) {
+            console.error('[SSE] Error handling task_output:', err);
+        }
+    });
+    
+    evtSource.addEventListener('task_counts', (e) => {
+        try {
+            const counts = JSON.parse(e.data);
+            updateHeaderTicker(counts.ongoing, counts.pending);
+        } catch (err) {
+            console.error('[SSE] Error handling task_counts:', err);
+        }
+    });
+    
+    evtSource.onerror = (err) => {
+        console.warn('[SSE] Connection error. EventSource will reconnect automatically...', err);
+    };
 }
 
-// Handle Navigation Toggling
-// UPDATED: Bulletproof Tab Switcher
-let processPollInterval = null;
+function updateHeaderTicker(ongoing, pending) {
+    const tickerText = document.getElementById('ticker-text');
+    const tickerDot = document.getElementById('ticker-dot');
+    const tickerBadge = document.getElementById('task-ticker');
+    
+    if (tickerText) {
+        tickerText.textContent = `Ongoing: ${ongoing} | Pending: ${pending}`;
+    }
+    if (tickerDot) {
+        if (ongoing > 0) {
+            tickerDot.className = 'ticker-dot active';
+            if (tickerBadge) tickerBadge.classList.add('active');
+        } else {
+            tickerDot.className = 'ticker-dot';
+            if (tickerBadge) tickerBadge.classList.remove('active');
+        }
+    }
+}
 
+function updateTaskInUI(task) {
+    if (loadedTasks[task.task_id]) {
+        Object.assign(loadedTasks[task.task_id], task);
+    } else {
+        loadedTasks[task.task_id] = task;
+    }
+    
+    // 1. Update Desktop Row
+    const row = document.getElementById(`row-${task.task_id}`);
+    if (row) {
+        const badge = row.querySelector('.status-badge');
+        if (badge) updateTaskBadge(badge, task);
+        
+        const timeline = row.querySelector('.task-timeline');
+        if (timeline) {
+            const shortId = task.task_id.split('-')[0];
+            const qBadge = task.queue_name ? `<div style="margin-top: 5px;"><strong style="color: var(--text-secondary);">Queue:</strong> <span style="color: var(--accent-primary); text-transform: uppercase; font-size: 0.9em; font-weight: bold;">${task.queue_name}</span></div>` : '';
+            timeline.innerHTML = `
+                <div><strong style="color: var(--text-secondary);">Started:</strong><br>${formatTime(task.start_time)}</div>
+                <div style="margin-top: 5px;"><strong style="color: var(--text-secondary);">Ended:</strong><br>${formatTime(task.end_time)}</div>
+                ${qBadge}
+            `;
+        }
+    } else {
+        // If row is not present on current page, re-render tasks
+        renderTasks(loadedTasks);
+    }
+
+    // 2. Update Mobile Card
+    renderTaskCard(task);
+}
+
+function appendLogChunk(taskId, chunk) {
+    if (loadedTasks[taskId]) {
+        loadedTasks[taskId].output = (loadedTasks[taskId].output || '') + chunk;
+    }
+
+    // 1. Update Desktop Table pre
+    const row = document.getElementById(`row-${taskId}`);
+    const deskPre = row ? row.querySelector('.log-output') : null;
+    if (deskPre) {
+        if (deskPre.querySelector('.btn-lazy-load')) deskPre.innerHTML = '';
+        deskPre.textContent += chunk;
+        if (deskPre.textContent.length > 150000) {
+            deskPre.textContent = deskPre.textContent.slice(-100000);
+        }
+        const state = getScrollState(taskId);
+        if (state.locked) {
+            deskPre.scrollTop = deskPre.scrollHeight;
+        }
+    }
+
+    // 2. Update Mobile Card pre
+    const mobPre = document.getElementById(`terminal-card-${taskId}`);
+    if (mobPre) {
+        mobPre.textContent += chunk;
+        if (mobPre.textContent.length > 150000) {
+            mobPre.textContent = mobPre.textContent.slice(-100000);
+        }
+        const state = getScrollState(taskId);
+        if (state.locked) {
+            mobPre.scrollTop = mobPre.scrollHeight;
+        }
+    }
+}
+
+async function copyLog(taskId, btn) {
+    const text = loadedTasks[taskId]?.output || '';
+    if (!text) {
+        showToast('No log content to copy.', 'warning');
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast('Log copied to clipboard.', 'success');
+    } catch (e) {
+        showToast('Failed to copy to clipboard.', 'error');
+    }
+}
+
+// --------------------------------------------------------------------------
+// NAVIGATION SYSTEM (DESKTOP & MOBILE BOTTOM NAV)
+// --------------------------------------------------------------------------
 function switchTab(tabId) {
-    // 1. Remove 'active' class from ALL navigation buttons
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
+    // 1. Desktop Nav Links
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    const activeDesktopBtn = document.getElementById(`btn-${tabId}`);
+    if (activeDesktopBtn) activeDesktopBtn.classList.add('active');
 
-    // 2. Hide ALL content wrappers
+    // 2. Mobile Bottom Nav Buttons
+    document.querySelectorAll('.bottom-nav-btn').forEach(btn => btn.classList.remove('active'));
+    const activeMobileBtn = document.getElementById(`bottom-btn-${tabId}`);
+    if (activeMobileBtn) activeMobileBtn.classList.add('active');
+
+    // 3. Tab Panels
     const tabTasks = document.getElementById('tab-tasks');
     const tabUtils = document.getElementById('tab-utilities');
     const tabLibs = document.getElementById('tab-libraries');
@@ -99,15 +422,10 @@ function switchTab(tabId) {
     if (tabUtils) tabUtils.style.display = 'none';
     if (tabLibs) tabLibs.style.display = 'none';
 
-    // 3. Highlight the clicked button
-    const activeBtn = document.getElementById(`btn-${tabId}`);
-    if (activeBtn) activeBtn.classList.add('active');
-
-    // 4. Show the targeted content wrapper
     const activeContent = document.getElementById(`tab-${tabId}`);
     if (activeContent) activeContent.style.display = 'block';
 
-    // Monitor processes dynamically when in Utilities tab
+    // Utilities Tab Monitoring
     if (tabId === 'utilities') {
         fetchProcessStatuses();
         if (!processPollInterval) {
@@ -120,37 +438,15 @@ function switchTab(tabId) {
         }
     }
     
+    // Libraries Tab Loading
     if (tabId === 'libraries') {
         fetchLibrariesList();
     }
 }
 
-// Shows a temporary success message next to the button
-function showNotification(elementId) {
-    const el = document.getElementById(elementId);
-    el.style.opacity = '1';
-    setTimeout(() => { el.style.opacity = '0'; }, 2000);
-}
-
-// Trigger Backend Command
-async function executeCommand(cmd) {
-    try {
-        await fetch(`/api/execute/${cmd}`, { method: 'POST' });
-        showNotification('ls-notify');
-        fetchTasks(); // Force immediate background refresh
-    } catch (error) {
-        console.error("Execution failed:", error);
-        alert("Failed to connect to the Pareo engine.");
-    }
-}
-
-// NEW: Global state for tasks pagination
-let loadedTasks = {};
-let tasksOffset = 0;
-const tasksLimit = 15;
-let hasMoreTasks = true;
-
-// Fetch and Render Tasks with Pagination and Filters
+// --------------------------------------------------------------------------
+// TASKS QUEUE FETCHING & RENDERING
+// --------------------------------------------------------------------------
 async function fetchTasks(offset = 0) {
     showLoading(40);
     try {
@@ -168,7 +464,6 @@ async function fetchTasks(offset = 0) {
         const newTasksCount = Object.keys(newTasks).length;
         
         if (offset === 0) {
-            // Keep first page logs if they were lazy-loaded
             const preservedLogs = {};
             Object.keys(loadedTasks).forEach(tid => {
                 if (loadedTasks[tid].output) {
@@ -183,17 +478,14 @@ async function fetchTasks(offset = 0) {
                     loadedTasks[tid].output = preservedLogs[tid];
                 }
             });
-            
             tasksOffset = 0;
         } else {
-            // Append next page
             Object.assign(loadedTasks, newTasks);
             tasksOffset = offset;
         }
         
         hasMoreTasks = newTasksCount === tasksLimit;
         renderTasks(loadedTasks);
-        updateTaskTicker();
         
         const loadMoreContainer = document.getElementById('tasks-load-more-container');
         if (loadMoreContainer) {
@@ -201,6 +493,7 @@ async function fetchTasks(offset = 0) {
         }
     } catch (error) {
         console.error("Failed to fetch tasks:", error);
+        showToast("Failed to load tasks from server.", "error");
     } finally {
         hideLoading();
     }
@@ -223,7 +516,7 @@ async function loadMoreTasks() {
 async function lazyLoadTaskOutput(taskId, btn) {
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = `<div class="css-spinner" style="border-top-color: var(--cyan); width: 12px; height: 12px; display: inline-block; margin-right: 5px;"></div> Loading...`;
+        btn.textContent = "Loading...";
     }
     try {
         const response = await fetch(`/api/tasks/${taskId}`);
@@ -237,6 +530,10 @@ async function lazyLoadTaskOutput(taskId, btn) {
             if (preElement) {
                 preElement.textContent = task.output || '(No log output)';
             }
+            const mobPre = document.getElementById(`terminal-card-${taskId}`);
+            if (mobPre) {
+                mobPre.textContent = task.output || '(No log output)';
+            }
         }
     } catch (error) {
         console.error("Failed to lazy load task output:", error);
@@ -247,75 +544,65 @@ async function lazyLoadTaskOutput(taskId, btn) {
     }
 }
 
-// NEW: Helper function to safely update the badge DOM only when needed
 function updateTaskBadge(badgeElement, task) {
-    // Only update the DOM if the status has actually changed
     if (badgeElement.dataset.status !== task.status) {
-        let badgeContent = `<span title="${task.status}" style="cursor: help;">${getStatusIcon(task.status)}</span>`;
+        let badgeContent = `<span title="${task.status}">${getStatusIcon(task.status)}</span>`;
         
-        // Inject the cancel button if pending or running
         if (task.status === 'Running' || task.status === 'Pending') {
-            badgeContent += `<button class="cancel-btn" onclick="cancelTask('${task.task_id}')" title="Cancel Task">🛑</button>`;
+            badgeContent += `<button class="btn btn-danger btn-icon" onclick="cancelTask('${task.task_id}')" title="Cancel Task" aria-label="Cancel Task">🛑</button>`;
         }
         
-        // Inject the retry button if failed, interrupted, or cancelled
         if (task.status.includes('Failed') || task.status.includes('Interrupted') || task.status === 'Cancelled') {
-            badgeContent += `<button class="retry-btn" onclick="retryTask('${task.task_id}')" title="Retry Task">↻</button>`;
+            badgeContent += `<button class="btn btn-secondary btn-icon" onclick="retryTask('${task.task_id}')" title="Retry Task" aria-label="Retry Task">↻</button>`;
         }
         
-        // Use Flexbox to force them to sit perfectly side-by-side
-        badgeElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; gap: 8px;">${badgeContent}</div>`;
-        badgeElement.dataset.status = task.status; // Save the state
+        badgeElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center; gap: 6px;">${badgeContent}</div>`;
+        badgeElement.dataset.status = task.status;
     }
 }
 
-// UPDATED: Map text status to static icons or the CSS spinner
 function getStatusIcon(status) {
-    if (status.includes('Pending')) return '⏳';
-    if (status.includes('Running')) return '<div class="css-spinner"></div>';
-    if (status.includes('Completed')) return '✅';
-    if (status.includes('Failed')) return '❌';
-    if (status.includes('Cancelled')) return '🚫';
-    return '⏺';
+    if (!status) return '⏺';
+    if (status.includes('Pending')) return '<span class="status-pending" style="padding: 2px 6px; border-radius: 2px;">⏳ PENDING</span>';
+    if (status.includes('Running')) return '<span class="status-running" style="padding: 2px 6px; border-radius: 2px;">⚡ RUNNING</span>';
+    if (status.includes('Completed')) return '<span class="status-completed" style="padding: 2px 6px; border-radius: 2px;">✓ DONE</span>';
+    if (status.includes('Failed')) return '<span class="status-failed" style="padding: 2px 6px; border-radius: 2px;">✕ FAILED</span>';
+    if (status.includes('Cancelled')) return '<span class="status-cancelled" style="padding: 2px 6px; border-radius: 2px;">⊘ CANCELLED</span>';
+    return status;
 }
 
-// UPDATED: Enforce strict DOM order, prune removed tasks, and support empty placeholders
 function renderTasks(tasks) {
     const tbody = document.querySelector('#tasks-table tbody');
-    
-    // Sort chronologically (newest first)
     const taskList = Object.values(tasks).sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
 
-    // Clear "No tasks found" placeholder if it exists
+    // Clear desktop placeholder
     if (tbody.firstElementChild && !tbody.firstElementChild.id) {
         tbody.firstElementChild.remove();
     }
 
     if (taskList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--base01); padding: 30px;">No tasks found matching the selected filters.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 30px;">No tasks found matching the selected filters.</td></tr>`;
+        const cardContainer = document.getElementById('tasks-card-container');
+        if (cardContainer) {
+            cardContainer.innerHTML = `<div class="card" style="text-align: center; color: var(--text-muted); padding: 20px;">No tasks found.</div>`;
+        }
         return;
     }
 
+    // Render Desktop Rows
     taskList.forEach((task, index) => {
         let tr = document.getElementById(`row-${task.task_id}`);
-        
-        let displayData = '';
-        if (task.status.includes('Failed') && !task.output) displayData = task.error || 'Execution failed.';
-        else if (task.output) displayData = task.output; 
-        else displayData = '...';
-
-        // NEW: Build the Combined Meta Column
         const shortId = task.task_id.split('-')[0];
         let queueBadge = '';
         if (task.queue_name) {
-            queueBadge = `<div style="margin-top: 5px;"><strong style="color: var(--base0);">Queue:</strong> <span style="color: var(--cyan); text-transform: uppercase; font-size: 0.9em; font-weight: bold;">${task.queue_name}</span></div>`;
+            queueBadge = `<div style="margin-top: 5px;"><strong style="color: var(--text-secondary);">Queue:</strong> <span style="color: var(--accent-primary); text-transform: uppercase; font-size: 0.9em; font-weight: bold;">${task.queue_name}</span></div>`;
         }
 
         const detailsHtml = `
-            <div style="font-weight: bold; color: var(--cyan); margin-bottom: 8px;">ID: ${shortId}</div>
-            <div class="task-timeline" style="font-size: 0.8em; color: var(--base01); line-height: 1.4;">
-                <div><strong style="color: var(--base0);">Started:</strong><br>${formatTime(task.start_time)}</div>
-                <div style="margin-top: 5px;"><strong style="color: var(--base0);">Ended:</strong><br>${formatTime(task.end_time)}</div>
+            <div style="font-weight: bold; color: var(--accent-primary); margin-bottom: 6px;">ID: ${shortId}</div>
+            <div class="task-timeline" style="font-size: 0.8em; color: var(--text-muted); line-height: 1.4;">
+                <div><strong style="color: var(--text-secondary);">Started:</strong><br>${formatTime(task.start_time)}</div>
+                <div style="margin-top: 5px;"><strong style="color: var(--text-secondary);">Ended:</strong><br>${formatTime(task.end_time)}</div>
                 ${queueBadge}
             </div>
         `;
@@ -323,63 +610,380 @@ function renderTasks(tasks) {
         if (!tr) {
             tr = document.createElement('tr');
             tr.id = `row-${task.task_id}`;
-            // UPDATED: 4-Column Layout matching index.html, with the output-cell class for the CSS height fix
             tr.innerHTML = `
                 <td style="vertical-align: top;">${detailsHtml}</td>
-                <td style="vertical-align: top;"><pre style="margin:0; white-space: pre-wrap; word-wrap: break-word;"><code>${task.command}</code></pre></td>
+                <td style="vertical-align: top;"><pre style="margin:0; white-space: pre-wrap; word-wrap: break-word; font-family: var(--font-family-mono); font-size: var(--font-size-xs); color: var(--text-primary);"><code>${escapeHtml(task.command)}</code></pre></td>
                 <td style="vertical-align: top; text-align: center;"><div class="status-badge"></div></td>
-                <td class="output-cell" style="vertical-align: top;"><pre class="log-output"></pre></td>
+                <td style="vertical-align: top;"><pre class="log-output" id="terminal-${task.task_id}"></pre></td>
             `;
         } else {
-            // Update details block dynamically in case of status/queue changes
             const detailsCell = tr.firstElementChild;
-            if (detailsCell) {
-                detailsCell.innerHTML = detailsHtml;
-            }
+            if (detailsCell) detailsCell.innerHTML = detailsHtml;
         }
 
-        // CRITICAL: Enforce exact DOM order without removing/re-adding nodes 
-        // (This prevents the scrollbar inside <pre> from jumping)
         if (tbody.children[index] !== tr) {
             tbody.insertBefore(tr, tbody.children[index]);
         }
 
         const badge = tr.querySelector('.status-badge');
         const preElement = tr.querySelector('.log-output');
-
-        // NEW: Call the helper function
         updateTaskBadge(badge, task);
 
-        // Update output dynamically (lazy loading for completed/failed tasks)
+        let displayData = task.output || '';
+        if (task.status.includes('Failed') && !displayData) displayData = task.error || 'Execution failed.';
+
         if (task.status !== 'Running' && !task.output) {
             if (!preElement.querySelector('.btn-lazy-load')) {
-                preElement.innerHTML = `<button class="btn btn-sm btn-lazy-load" onclick="lazyLoadTaskOutput('${task.task_id}', this)" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 4px 10px; font-size: 0.85em; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px;">📄 View Logs</button>`;
+                preElement.innerHTML = `<button class="btn btn-secondary btn-sm btn-lazy-load" onclick="lazyLoadTaskOutput('${task.task_id}', this)">📄 View Logs</button>`;
             }
         } else {
             if (preElement.textContent !== displayData || preElement.querySelector('.btn-lazy-load')) {
-                preElement.textContent = displayData;
-                if (task.status === 'Running') {
-                    // Keep scroll anchored to bottom
+                preElement.textContent = displayData || '...';
+                const state = getScrollState(task.task_id);
+                if (state.locked) {
                     setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
                 }
             }
         }
 
-        // Trigger high-speed poller if running
-        if (task.status === 'Running' && !activePolls.has(task.task_id)) {
-            activePolls.add(task.task_id);
-            pollSpecificTask(task.task_id);
-        }
+        // Render Mobile Card Synchronously
+        renderTaskCard(task);
     });
 
-    // Remove extra rows in the DOM that are no longer in the current page/filter list
+    // Prune removed desktop rows
     while (tbody.children.length > taskList.length) {
         tbody.lastElementChild.remove();
     }
 }
 
-// NEW: Global state for Remote Servers
-let remotesConfig = {};
+function renderTaskCard(task) {
+    const container = document.getElementById('tasks-card-container');
+    if (!container) return;
+
+    let card = document.getElementById(`card-${task.task_id}`);
+    const shortId = task.task_id.split('-')[0];
+    const qName = (task.queue_name || 'default').toLowerCase();
+    const statusClass = `status-${(task.status || 'pending').toLowerCase().split(' ')[0].replace(/[^a-z]/g, '')}`;
+
+    let actionsHtml = '';
+    if (task.status === 'Running' || task.status === 'Pending') {
+        actionsHtml += `<button class="btn btn-danger btn-icon" onclick="cancelTask('${task.task_id}')" title="Cancel Task" aria-label="Cancel Task">🛑</button>`;
+    }
+    if (task.status.includes('Failed') || task.status.includes('Interrupted') || task.status === 'Cancelled') {
+        actionsHtml += `<button class="btn btn-secondary btn-icon" onclick="retryTask('${task.task_id}')" title="Retry Task" aria-label="Retry Task">↻</button>`;
+    }
+    actionsHtml += `<button class="btn btn-secondary btn-icon" onclick="copyLog('${task.task_id}', this)" title="Copy Log" aria-label="Copy Log">📋</button>`;
+
+    const cardHtml = `
+        <header class="task-card-header">
+            <div class="task-id-badge">
+                <span class="queue-chip queue-${qName}">${(task.queue_name || 'DEFAULT').toUpperCase()}</span>
+                <code class="task-id-code">#${shortId}</code>
+            </div>
+            <div class="task-status-pill ${statusClass}" role="status" aria-label="Status: ${task.status}">
+                ${task.status === 'Running' ? '<span class="ticker-dot active" style="margin-right: 4px;"></span>' : ''}
+                ${task.status}
+            </div>
+        </header>
+
+        <div class="task-command-block">
+            <code class="task-command-code">${escapeHtml(task.command || '')}</code>
+        </div>
+
+        <dl class="task-meta-grid">
+            <div class="meta-item">
+                <dt>STARTED</dt>
+                <dd>${formatTime(task.start_time)}</dd>
+            </div>
+            <div class="meta-item">
+                <dt>ENDED</dt>
+                <dd>${formatTime(task.end_time)}</dd>
+            </div>
+        </dl>
+
+        <details class="task-log-details" open>
+            <summary style="cursor: pointer; font-size: 0.8em; color: var(--text-muted); margin-bottom: 6px; display: flex; justify-content: space-between;">
+                <span>TERMINAL READOUT</span>
+                <span style="color: var(--accent-primary); font-family: var(--font-family-mono);">LIVE</span>
+            </summary>
+            <div class="terminal-toolbar">
+                <button class="terminal-tool-btn btn-lock-active" onclick="toggleScrollLock('${task.task_id}', this)">
+                    🔒 LOCK SCROLL
+                </button>
+            </div>
+            <pre class="task-log-terminal" id="terminal-card-${task.task_id}" onscroll="handleUserTerminalScroll('${task.task_id}')">${escapeHtml(task.output || (task.status === 'Running' ? '...' : '(No output)'))}</pre>
+        </details>
+
+        <footer class="task-card-footer">
+            ${actionsHtml}
+        </footer>
+    `;
+
+    if (!card) {
+        card = document.createElement('article');
+        card.className = 'task-card';
+        card.id = `card-${task.task_id}`;
+        card.dataset.status = task.status;
+        card.innerHTML = cardHtml;
+        container.appendChild(card);
+    } else {
+        card.dataset.status = task.status;
+        card.innerHTML = cardHtml;
+    }
+}
+
+// --------------------------------------------------------------------------
+// TASK ACTIONS: CANCEL, RETRY, PURGE, FILTERS
+// --------------------------------------------------------------------------
+async function cancelTask(taskId) {
+    const ok = await showAppConfirm("Are you sure you want to cancel this task?");
+    if (!ok) return;
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json();
+            showToast(`Error: ${data.detail}`, 'error');
+            return;
+        }
+        showToast("Task cancelled successfully.", "info");
+    } catch (error) {
+        showToast("Failed to cancel task: " + error.message, "error");
+    }
+}
+
+async function retryTask(taskId) {
+    try {
+        const response = await fetch(`/api/tasks/${taskId}/retry`, { method: 'POST' });
+        if (!response.ok) {
+            const data = await response.json();
+            showToast(`Error: ${data.detail}`, 'error');
+            return;
+        }
+        showToast("Task requeued successfully.", "success");
+    } catch (error) {
+        showToast("Failed to retry task: " + error.message, "error");
+    }
+}
+
+async function purgeTasks() {
+    const ageSelect = document.getElementById('purge-age');
+    if (!ageSelect) return;
+    const age = ageSelect.value;
+    
+    let msg = `Purge tasks older than ${ageSelect.options[ageSelect.selectedIndex].text}?`;
+    if (age === 'all') {
+        msg = "Purge the entire tasks queue history? (Active tasks will not be affected)";
+    }
+    
+    const ok = await showAppConfirm(msg);
+    if (!ok) return;
+    
+    try {
+        const response = await fetch(`/api/tasks/purge?age=${age}`, { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+            showToast(data.message, "success");
+            applyFilters();
+        } else {
+            showToast(`Error: ${data.detail}`, "error");
+        }
+    } catch (error) {
+        showToast("Failed to purge tasks: " + error.message, "error");
+    }
+}
+
+function applyFilters() {
+    loadedTasks = {};
+    const cardContainer = document.getElementById('tasks-card-container');
+    if (cardContainer) cardContainer.innerHTML = '';
+    fetchTasks(0);
+}
+
+function applyFiltersWithDebounce() {
+    if (filterDebounceTimeout) clearTimeout(filterDebounceTimeout);
+    filterDebounceTimeout = setTimeout(applyFilters, 300);
+}
+
+function clearFilters() {
+    const q = document.getElementById('filter-queue');
+    const s = document.getElementById('filter-status');
+    const c = document.getElementById('filter-command');
+    if (q) q.value = '';
+    if (s) s.value = '';
+    if (c) c.value = '';
+    applyFilters();
+}
+
+// --------------------------------------------------------------------------
+// FFMPEG MEDIA TRANSCODING
+// --------------------------------------------------------------------------
+async function fetchProfiles() {
+    try {
+        const response = await fetch('/api/config/ffmpeg');
+        const data = await response.json();
+        ffmpegConfig = data.profiles || {};
+        
+        const profileSelect = document.getElementById('ffmpeg-profile');
+        if (!profileSelect) return;
+        profileSelect.innerHTML = '';
+        
+        Object.keys(ffmpegConfig).forEach(profileName => {
+            const option = document.createElement('option');
+            option.value = profileName;
+            option.textContent = profileName;
+            profileSelect.appendChild(option);
+        });
+        
+        onProfileChange();
+    } catch (error) {
+        console.error("Failed to load FFMPEG profiles:", error);
+    }
+}
+
+function onProfileChange() {
+    const profileSelect = document.getElementById('ffmpeg-profile');
+    if (!profileSelect) return;
+    const profileName = profileSelect.value;
+    const profileData = ffmpegConfig[profileName];
+    
+    const modeSelect = document.getElementById('ffmpeg-mode');
+    if (!modeSelect) return;
+    modeSelect.innerHTML = '';
+    
+    const singleOption = document.createElement('option');
+    singleOption.value = 'single';
+    singleOption.textContent = 'Single File Processing';
+    modeSelect.appendChild(singleOption);
+    
+    if (profileData && profileData.batch_compatible) {
+        const batchOption = document.createElement('option');
+        batchOption.value = 'batch';
+        batchOption.textContent = 'Batch Folder Processing';
+        modeSelect.appendChild(batchOption);
+    }
+    
+    updateFfmpegUI();
+}
+
+function updateFfmpegUI() {
+    const mode = document.getElementById('ffmpeg-mode')?.value;
+    const lblInput = document.getElementById('lbl-ffmpeg-input');
+    const lblOutput = document.getElementById('lbl-ffmpeg-output');
+    const inputField = document.getElementById('ffmpeg-input');
+    const outputField = document.getElementById('ffmpeg-output');
+    const extContainer = document.getElementById('batch-ext-container');
+    const extSelect = document.getElementById('ffmpeg-ext');
+    
+    if (!mode || !lblInput || !lblOutput || !inputField || !outputField || !extContainer || !extSelect) return;
+
+    if (mode === 'batch') {
+        lblInput.textContent = "Source Directory";
+        inputField.placeholder = "/path/to/source_folder/";
+        lblOutput.textContent = "Destination Directory";
+        outputField.placeholder = "/path/to/destination_folder/";
+        
+        extContainer.style.display = "block";
+        extSelect.innerHTML = '';
+        
+        const profileName = document.getElementById('ffmpeg-profile').value;
+        const profileData = ffmpegConfig[profileName];
+        const allowedExts = profileData?.allowed_extensions || ['.mp4', '.mkv'];
+        
+        allowedExts.forEach(ext => {
+            const opt = document.createElement('option');
+            opt.value = ext;
+            opt.textContent = ext;
+            extSelect.appendChild(opt);
+        });
+    } else {
+        lblInput.textContent = "Input Path";
+        inputField.placeholder = "/path/to/input.mp4";
+        lblOutput.textContent = "Output Path";
+        outputField.placeholder = "/path/to/output.mkv";
+        extContainer.style.display = "none";
+    }
+}
+
+async function executeFfmpeg() {
+    const inputPath = document.getElementById('ffmpeg-input').value.trim();
+    const outputPath = document.getElementById('ffmpeg-output').value.trim();
+    const profile = document.getElementById('ffmpeg-profile').value;
+    const mode = document.getElementById('ffmpeg-mode').value;
+    const outputExt = document.getElementById('ffmpeg-ext')?.value || '.mp4';
+
+    if (!inputPath || !outputPath) {
+        showToast("Please provide both input and output destinations.", "warning");
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/execute/ffmpeg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                input_target: inputPath,
+                output_target: outputPath,
+                profile: profile,
+                mode: mode,
+                output_extension: outputExt
+            })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            showToast(data.message, "success");
+            fetchTasks();
+            setTimeout(() => switchTab('tasks'), 400);
+        } else {
+            showToast(`Transcode failed: ${data.detail}`, "error");
+        }
+    } catch (error) {
+        showToast("Failed to queue FFMPEG task: " + error.message, "error");
+    }
+}
+
+// --------------------------------------------------------------------------
+// FILESYSTEM EXPLORER & OPERATIONS
+// --------------------------------------------------------------------------
+async function fetchFsConfig() {
+    try {
+        const response = await fetch('/api/config/fs');
+        const data = await response.json();
+        fsConfig = data.actions || {};
+        
+        const select = document.getElementById('fs-action-select');
+        if (!select) return;
+        select.innerHTML = '<option value="">Select Action...</option>';
+        Object.keys(fsConfig).forEach(actionName => {
+            const opt = document.createElement('option');
+            opt.value = actionName;
+            opt.textContent = actionName;
+            select.appendChild(opt);
+        });
+    } catch (error) {
+        console.error("Failed to load FS config:", error);
+    }
+}
+
+async function fetchBookmarks() {
+    try {
+        const response = await fetch('/api/config/bookmarks');
+        const bookmarks = await response.json();
+        
+        const datalist = document.getElementById('bookmarks-list');
+        if (!datalist) return;
+        datalist.innerHTML = ''; 
+        
+        Object.entries(bookmarks).forEach(([name, path]) => {
+            const option = document.createElement('option');
+            option.value = path;
+            option.textContent = name;
+            datalist.appendChild(option);
+        });
+    } catch (error) {
+        console.error("Failed to load bookmarks:", error);
+    }
+}
 
 async function fetchRemotesConfig() {
     try {
@@ -389,12 +993,16 @@ async function fetchRemotesConfig() {
         const serverSelect = document.getElementById('fs-remote-server');
         const exploreSelect = document.getElementById('fs-explore-server');
         
+        if (serverSelect) serverSelect.innerHTML = '<option value="">Target Remote...</option>';
+        if (exploreSelect) exploreSelect.innerHTML = '<option value="">Local Filesystem</option>';
+        
         Object.keys(remotesConfig).forEach(serverName => {
-            const opt = document.createElement('option');
-            opt.value = serverName;
-            opt.textContent = serverName;
-            serverSelect.appendChild(opt);
-            
+            if (serverSelect) {
+                const opt = document.createElement('option');
+                opt.value = serverName;
+                opt.textContent = serverName;
+                serverSelect.appendChild(opt);
+            }
             if (exploreSelect) {
                 const optExp = document.createElement('option');
                 optExp.value = serverName;
@@ -410,60 +1018,25 @@ async function fetchRemotesConfig() {
 async function onExploreServerChange() {
     const serverName = document.getElementById('fs-explore-server').value;
     const pathInput = document.getElementById('fs-explore-path');
-    
-    // Clear and reload datalist options based on selected host (Local vs Remote)
     const datalist = document.getElementById('bookmarks-list');
+    if (!datalist || !pathInput) return;
     datalist.innerHTML = '';
     
-    if (serverName) {
-        // Load Remote Bookmarks
-        const serverConfig = remotesConfig[serverName];
-        if (serverConfig && serverConfig.bookmarks) {
-            const bookmarks = serverConfig.bookmarks;
-            Object.entries(bookmarks).forEach(([name, path]) => {
-                const opt = document.createElement('option');
-                opt.value = path;
-                opt.textContent = name;
-                datalist.appendChild(opt);
-            });
-            // Set default value to first bookmark path or "/"
-            const firstPath = Object.values(bookmarks)[0] || '/';
-            pathInput.value = firstPath;
-        } else {
-            pathInput.value = '/';
-        }
+    if (serverName && remotesConfig[serverName] && remotesConfig[serverName].bookmarks) {
+        const bookmarks = remotesConfig[serverName].bookmarks;
+        Object.entries(bookmarks).forEach(([name, path]) => {
+            const opt = document.createElement('option');
+            opt.value = path;
+            opt.textContent = name;
+            datalist.appendChild(opt);
+        });
+        const firstPath = Object.values(bookmarks)[0] || '/';
+        pathInput.value = firstPath;
     } else {
-        // Load Local Bookmarks
         await fetchBookmarks();
         pathInput.value = '/';
     }
 }
-
-// NEW: Global state for File Operations Config
-let fsConfig = {};
-
-// Fetch FS Config on load
-async function fetchFsConfig() {
-    try {
-        const response = await fetch('/api/config/fs');
-        const data = await response.json();
-        fsConfig = data.actions || {};
-        
-        const select = document.getElementById('fs-action-select');
-        Object.keys(fsConfig).forEach(actionName => {
-            const opt = document.createElement('option');
-            opt.value = actionName;
-            opt.textContent = actionName;
-            select.appendChild(opt);
-        });
-    } catch (error) {
-        console.error("Failed to load FS config:", error);
-    }
-}
-
-// -----------------------------------------------------
-// FILE EXPLORER MODAL LOGIC
-// -----------------------------------------------------
 
 async function openExplorer() {
     const remoteServer = document.getElementById('fs-explore-server').value;
@@ -472,9 +1045,9 @@ async function openExplorer() {
     const title = document.getElementById('explorer-title');
     const list = document.getElementById('explorer-list');
 
-    modal.style.display = 'flex'; // Show modal
+    modal.style.display = 'flex';
     title.textContent = `Browsing ${remoteServer ? remoteServer : 'Local'}: ${targetPath}`;
-    list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Loading...</div>';
+    list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Loading files...</div>';
 
     try {
         const response = await fetch(`/api/fs/list?target_path=${encodeURIComponent(targetPath)}&remote_server=${encodeURIComponent(remoteServer)}`);
@@ -485,17 +1058,17 @@ async function openExplorer() {
             title.textContent = `Browsing ${remoteServer ? remoteServer : 'Local'}: ${data.target_path}`;
             renderExplorerList(data.items, data.parent_path);
         } else {
-            list.innerHTML = `<div style="padding: 20px; color: #e74c3c;">Error: ${data.detail || 'Could not load directory'}</div>`;
+            list.innerHTML = `<div style="padding: 20px; color: var(--status-failed);">Error: ${data.detail || 'Could not load directory'}</div>`;
         }
     } catch (error) {
-        list.innerHTML = `<div style="padding: 20px; color: #e74c3c;">Connection Error.</div>`;
+        list.innerHTML = `<div style="padding: 20px; color: var(--status-failed);">Connection Error.</div>`;
     }
 }
 
 function closeExplorer() {
     document.getElementById('explorer-modal').style.display = 'none';
-    // Reset inputs
-    document.getElementById('fs-action-select').value = '';
+    const sel = document.getElementById('fs-action-select');
+    if (sel) sel.value = '';
     onFsActionChange(); 
 }
 
@@ -506,29 +1079,25 @@ function browseToFolder(path) {
 
 function renderExplorerList(items, parentPath) {
     const list = document.getElementById('explorer-list');
-    list.innerHTML = ''; // Clear loading
+    list.innerHTML = '';
 
-    // Prepend parent directory navigation row
     if (parentPath) {
         const pDiv = document.createElement('div');
-        pDiv.className = 'file-item parent-dir-item';
+        pDiv.className = 'file-item';
         pDiv.style.cursor = 'pointer';
         pDiv.onclick = () => browseToFolder(parentPath);
-        
         pDiv.innerHTML = `
-            <input type="checkbox" class="fs-checkbox" style="visibility: hidden; margin-right: 15px;">
-            <span class="file-icon">📁</span>
-            <span class="file-name" style="font-weight: bold; color: var(--cyan);">.. (Parent Directory)</span>
-            <span class="file-size"></span>
-            <div class="file-actions" style="display: flex; gap: 8px;">
-                <button class="action-icon-btn" title="Go Up" style="pointer-events: none;">📂</button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span>📁</span>
+                <span class="file-name" style="font-weight: bold; color: var(--accent-primary);">.. (Parent Directory)</span>
             </div>
+            <button class="btn btn-secondary btn-sm" style="pointer-events: none;">Go Up</button>
         `;
         list.appendChild(pDiv);
     }
 
     if (items.length === 0 && !parentPath) {
-        list.innerHTML = '<div style="padding: 20px; text-align: center; color: #666;">Directory is empty.</div>';
+        list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Directory is empty.</div>';
         return;
     }
 
@@ -540,52 +1109,24 @@ function renderExplorerList(items, parentPath) {
         const sizeStr = item.is_dir ? '' : `(${(item.size / 1024 / 1024).toFixed(2)} MB)`;
 
         div.innerHTML = `
-            <input type="checkbox" class="fs-checkbox" value="${item.path}">
-            <span class="file-icon">${icon}</span>
-            <span class="file-name">${item.name}</span>
-            <span class="file-size" style="margin-right: 15px; color: var(--base01);">${sizeStr}</span>
+            <div style="display: flex; align-items: center; gap: 8px; flex-grow: 1; overflow: hidden;">
+                <input type="checkbox" class="fs-checkbox" value="${item.path}">
+                <span>${icon}</span>
+                <span class="file-name" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(item.name)}</span>
+                <span class="file-size">${sizeStr}</span>
+            </div>
+            <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                ${item.is_dir ? `<button class="btn btn-secondary btn-icon" onclick="event.stopPropagation(); browseToFolder('${item.path}')" title="Browse">📂</button>` : ''}
+                <button class="btn btn-secondary btn-icon" onclick="event.stopPropagation(); renameExplorerItem('${item.path}', '${item.name}')" title="Rename">✏️</button>
+            </div>
         `;
-        
-        // Actions Container
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'file-actions';
-        actionsDiv.style.display = 'flex';
-        actionsDiv.style.gap = '8px';
-
-        // Add Browse button for directories
-        if (item.is_dir) {
-            const browseBtn = document.createElement('button');
-            browseBtn.className = 'action-icon-btn';
-            browseBtn.innerHTML = '📂';
-            browseBtn.title = 'Browse Directory';
-            browseBtn.onclick = (e) => {
-                e.stopPropagation();
-                browseToFolder(item.path);
-            };
-            actionsDiv.appendChild(browseBtn);
-        }
-
-        // Add Rename button
-        const renameBtn = document.createElement('button');
-        renameBtn.className = 'action-icon-btn';
-        renameBtn.innerHTML = '✏️';
-        renameBtn.title = 'Rename';
-        renameBtn.onclick = (e) => {
-            e.stopPropagation();
-            renameExplorerItem(item.path, item.name);
-        };
-        actionsDiv.appendChild(renameBtn);
-
-        div.appendChild(actionsDiv);
         list.appendChild(div);
     });
 }
 
 async function renameExplorerItem(path, oldName) {
-    const newName = prompt(`Enter new name for "${oldName}":`, oldName);
-    if (!newName || newName.trim() === "" || newName === oldName) {
-        return;
-    }
+    const newName = await showAppPrompt(`Enter new name for "${oldName}":`, oldName);
+    if (!newName || newName.trim() === "" || newName === oldName) return;
     
     const remoteServer = document.getElementById('fs-explore-server').value;
     try {
@@ -601,25 +1142,24 @@ async function renameExplorerItem(path, oldName) {
         
         const data = await response.json();
         if (response.ok) {
-            openExplorer(); // Refresh directory listing
+            showToast(`Renamed to ${newName}`, 'success');
+            openExplorer();
         } else {
-            alert(`Error: ${data.detail}`);
+            showToast(`Rename error: ${data.detail}`, 'error');
         }
     } catch (error) {
-        console.error("Rename failed:", error);
-        alert("Failed to connect to the Pareo engine.");
+        showToast("Failed to connect to engine: " + error.message, 'error');
     }
 }
 
-// UPDATED: Dynamically shape-shift the UI and swap datalists
 function onFsActionChange() {
-    const action = document.getElementById('fs-action-select').value;
+    const action = document.getElementById('fs-action-select')?.value;
     const destInput = document.getElementById('fs-dest-path');
     const remoteSelect = document.getElementById('fs-remote-server');
     
     if (!action || !fsConfig[action]) {
-        destInput.style.display = 'none';
-        remoteSelect.style.display = 'none';
+        if (destInput) destInput.style.display = 'none';
+        if (remoteSelect) remoteSelect.style.display = 'none';
         return;
     }
 
@@ -627,29 +1167,37 @@ function onFsActionChange() {
     const requiresDest = fsConfig[action].requires_destination;
 
     if (isRemote) {
-        remoteSelect.style.display = 'block';
-        destInput.style.display = 'block';
-        destInput.setAttribute('list', 'remote-bookmarks-list'); // Swap to remote bookmarks
-        destInput.placeholder = "Remote Target Path...";
-        onRemoteServerChange(); // Trigger populate for the first item
+        if (remoteSelect) remoteSelect.style.display = 'block';
+        if (destInput) {
+            destInput.style.display = 'block';
+            destInput.setAttribute('list', 'remote-bookmarks-list');
+            destInput.placeholder = "Remote Target Path...";
+        }
+        onRemoteServerChange();
     } else if (requiresDest) {
-        remoteSelect.style.display = 'none';
-        remoteSelect.value = ''; 
-        destInput.style.display = 'block';
-        destInput.setAttribute('list', 'bookmarks-list'); // Swap back to local bookmarks
-        destInput.placeholder = "Destination Path (e.g. /dest/)";
+        if (remoteSelect) {
+            remoteSelect.style.display = 'none';
+            remoteSelect.value = '';
+        }
+        if (destInput) {
+            destInput.style.display = 'block';
+            destInput.setAttribute('list', 'bookmarks-list');
+            destInput.placeholder = "Destination Path (e.g. /dest/)";
+        }
     } else {
-        remoteSelect.style.display = 'none';
-        destInput.style.display = 'none';
-        destInput.value = '';
+        if (remoteSelect) remoteSelect.style.display = 'none';
+        if (destInput) {
+            destInput.style.display = 'none';
+            destInput.value = '';
+        }
     }
 }
 
-// NEW: Context-aware datalist population
 function onRemoteServerChange() {
-    const serverName = document.getElementById('fs-remote-server').value;
+    const serverName = document.getElementById('fs-remote-server')?.value;
     const datalist = document.getElementById('remote-bookmarks-list');
-    datalist.innerHTML = ''; // Clear previous bookmarks
+    if (!datalist) return;
+    datalist.innerHTML = '';
 
     if (serverName && remotesConfig[serverName] && remotesConfig[serverName].bookmarks) {
         const bookmarks = remotesConfig[serverName].bookmarks;
@@ -665,144 +1213,79 @@ function onRemoteServerChange() {
 async function executeFsBatch() {
     const action = document.getElementById('fs-action-select').value;
     const destInput = document.getElementById('fs-dest-path').value.trim();
-    const remoteServer = document.getElementById('fs-remote-server').value; // NEW
-    const sourceServer = document.getElementById('fs-explore-server').value; // NEW
+    const remoteServer = document.getElementById('fs-remote-server').value;
+    const sourceServer = document.getElementById('fs-explore-server').value;
     
     const checkboxes = document.querySelectorAll('.fs-checkbox:checked');
     const sourcePaths = Array.from(checkboxes).map(cb => cb.value);
 
     if (sourcePaths.length === 0) {
-        alert("Please select at least one file or folder.");
+        showToast("Please select at least one file or folder.", "warning");
         return;
     }
     if (!action) {
-        alert("Please select an action to perform.");
+        showToast("Please select an action to perform.", "warning");
         return;
     }
-    if (fsConfig[action].requires_destination && !destInput) {
-        alert(`The action '${action}' requires a destination path.`);
+    if (fsConfig[action]?.requires_destination && !destInput) {
+        showToast(`Action '${action}' requires a destination path.`, "warning");
         return;
     }
-    // NEW: Validation
-    if (fsConfig[action].requires_remote && !remoteServer) {
-        alert(`The action '${action}' requires a target Remote Server.`);
+    if (fsConfig[action]?.requires_remote && !remoteServer) {
+        showToast(`Action '${action}' requires a target Remote Server.`, "warning");
         return;
     }
 
     try {
-        await fetch('/api/execute/fs', {
+        const res = await fetch('/api/execute/fs', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: action,
                 source_paths: sourcePaths,
                 destination_path: destInput,
-                remote_server: remoteServer, // NEW: Target server for local-to-remote
-                source_server: sourceServer   // NEW: Source server of selected files
+                remote_server: remoteServer,
+                source_server: sourceServer
             })
         });
 
-        closeExplorer();
-        showNotification('fs-notify');
-        fetchTasks(); 
-
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message, "success");
+            closeExplorer();
+            fetchTasks();
+            setTimeout(() => switchTab('tasks'), 400);
+        } else {
+            showToast(`Batch failed: ${data.detail}`, "error");
+        }
     } catch (error) {
-        console.error("Execution failed:", error);
-        alert("Failed to queue file operations.");
+        showToast("Failed to queue file operations: " + error.message, "error");
     }
 }
 
-// UPDATED: Execute based on the unified API contract
-async function executeFfmpeg() {
-    const inputTarget = document.getElementById('ffmpeg-input').value.trim();
-    const outputTarget = document.getElementById('ffmpeg-output').value.trim();
-    const profile = document.getElementById('ffmpeg-profile').value; 
-    const mode = document.getElementById('ffmpeg-mode').value;
-    // Fallback to .mp4 if the dropdown is somehow empty
-    const ext = document.getElementById('ffmpeg-ext').value || '.mp4'; 
-
-    if (!inputTarget || !outputTarget) {
-        alert("Please provide both input and output destinations.");
-        return;
-    }
-
-    try {
-        await fetch('/api/execute/ffmpeg', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                input_target: inputTarget, 
-                output_target: outputTarget,
-                profile: profile,
-                mode: mode,
-                output_extension: ext
-            })
-        });
-        
-        document.getElementById('ffmpeg-input').value = '';
-        document.getElementById('ffmpeg-output').value = '';
-        
-        showNotification('ffmpeg-notify');
-        fetchTasks(); 
-        
-    } catch (error) {
-        console.error("Execution failed:", error);
-        alert("Failed to queue FFMPEG task.");
-    }
-}
-
-// NEW FUNCTION: Fetch and populate FFMPEG profiles
-async function fetchProfiles() {
-    try {
-        const response = await fetch('/api/config/ffmpeg');
-        const data = await response.json();
-        
-        ffmpegConfig = data.profiles; // Store the full config object
-        
-        const select = document.getElementById('ffmpeg-profile');
-        select.innerHTML = ''; 
-        
-        Object.keys(ffmpegConfig).forEach(profileName => {
-            const option = document.createElement('option');
-            option.value = profileName;
-            option.textContent = profileName;
-            select.appendChild(option);
-        });
-        
-        onProfileChange(); // Force the UI to shape itself to the first profile
-    } catch (error) {
-        console.error("Failed to load profiles:", error);
-    }
-}
-
-// NEW: Switchboard Generation
+// --------------------------------------------------------------------------
+// SYSTEM SWITCHBOARD & CUSTOM CARDS
+// --------------------------------------------------------------------------
 async function fetchSwitchboardConfig() {
     try {
         const response = await fetch('/api/config/switchboard');
-        const config = await response.json();
+        const switchboard = await response.json();
         const container = document.getElementById('switchboard-container');
+        if (!container) return;
         container.innerHTML = '';
-
-        Object.entries(config).forEach(([categoryName, buttons]) => {
-            // Create Category Wrapper
+        
+        Object.entries(switchboard).forEach(([category, data]) => {
             const catDiv = document.createElement('div');
-            catDiv.className = 'switchboard-category';
-            catDiv.innerHTML = `<h5>${categoryName}</h5>`;
+            catDiv.style.cssText = "display: flex; flex-direction: column; gap: 8px;";
+            catDiv.innerHTML = `<h5 style="color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">${category}</h5>`;
             
-            // Create Grid for Buttons
-            const gridDiv = document.createElement('div');
-            gridDiv.className = 'switchboard-grid';
-
-            Object.keys(buttons).forEach(btnName => {
+            Object.keys(data.buttons || {}).forEach(btnName => {
                 const btn = document.createElement('button');
-                btn.className = 'btn-switch';
+                btn.className = "btn-switch";
                 btn.textContent = btnName;
-                // Pass 'this' so the function knows exactly which button to animate
-                btn.onclick = function() { fireSwitchboard(categoryName, btnName, this); };
-                gridDiv.appendChild(btn);
+                btn.onclick = () => fireSwitchboard(category, btnName, btn);
+                catDiv.appendChild(btn);
             });
-
-            catDiv.appendChild(gridDiv);
             container.appendChild(catDiv);
         });
     } catch (error) {
@@ -810,578 +1293,139 @@ async function fetchSwitchboardConfig() {
     }
 }
 
-async function pollSpecificTask(taskId) {
-    const row = document.getElementById(`row-${taskId}`);
-    if (!row) return;
-
-    try {
-        const response = await fetch(`/api/tasks/${taskId}`);
-        const task = await response.json();
-        
-        if (task.error) return;
-
-        const badge = row.querySelector('.status-badge');
-        const preElement = row.querySelector('.log-output');
-        const timeline = row.querySelector('.task-timeline');
-
-        // NEW: Call the helper function
-        updateTaskBadge(badge, task);
-
-        // NEW: Update the timeline with Solarized formatting
-        if (timeline) {
-            timeline.innerHTML = `
-                <div><strong style="color: var(--base0);">Started:</strong><br>${formatTime(task.start_time)}</div>
-                <div style="margin-top: 5px;"><strong style="color: var(--base0);">Ended:</strong><br>${formatTime(task.end_time)}</div>
-            `;
-        }
-
-        if (preElement.textContent !== task.output) {
-            preElement.textContent = task.output || '...';
-            if (task.status === 'Running') {
-                setTimeout(() => { preElement.scrollTop = preElement.scrollHeight; }, 0);
-            }
-        }
-
-        if (task.status === 'Running') {
-            setTimeout(() => pollSpecificTask(taskId), 1000);
-        } else {
-            activePolls.delete(taskId);
-            fetchTasks(); 
-        }
-
-    } catch (error) {
-        console.error(`Failed to poll task ${taskId}:`, error);
-    }
-}
-
-// NEW: Handle Profile Selection
-function onProfileChange() {
-    const profileName = document.getElementById('ffmpeg-profile').value;
-    const profileData = ffmpegConfig[profileName];
-    if (!profileData) return;
-
-    const modeSelect = document.getElementById('ffmpeg-mode');
-    modeSelect.innerHTML = ''; 
-
-    // Only populate modes explicitly permitted by the config
-    profileData.modes.forEach(mode => {
-        const option = document.createElement('option');
-        option.value = mode;
-        option.textContent = mode === 'single' ? 'Single File' : 'Batch (Wildcard)';
-        modeSelect.appendChild(option);
-    });
-
-    updateFfmpegUI(); // Update text labels based on the active mode
-}
-
-// NEW: Update text labels and extension constraints
-function updateFfmpegUI() {
-    const mode = document.getElementById('ffmpeg-mode').value;
-    const profileName = document.getElementById('ffmpeg-profile').value;
-    const profileData = ffmpegConfig[profileName];
-    
-    const lblInput = document.getElementById('lbl-ffmpeg-input');
-    const inputField = document.getElementById('ffmpeg-input');
-    const lblOutput = document.getElementById('lbl-ffmpeg-output');
-    const outputField = document.getElementById('ffmpeg-output');
-    const extContainer = document.getElementById('batch-ext-container');
-    const extSelect = document.getElementById('ffmpeg-ext');
-
-    if (mode === 'batch') {
-        lblInput.textContent = "Input Pattern (Wildcard)";
-        inputField.placeholder = "/source/media/*.mkv";
-        lblOutput.textContent = "Output Directory";
-        outputField.placeholder = "/dest/media/";
-        
-        // Restrict extensions to those defined in config
-        extSelect.innerHTML = '';
-        if (profileData && profileData.allowed_extensions) {
-            profileData.allowed_extensions.forEach(ext => {
-                const opt = document.createElement('option');
-                opt.value = ext;
-                opt.textContent = ext;
-                extSelect.appendChild(opt);
-            });
-        }
-        extContainer.style.display = "block";
-    } else {
-        lblInput.textContent = "Input Path";
-        inputField.placeholder = "/path/to/input.mp4";
-        lblOutput.textContent = "Output Path";
-        outputField.placeholder = "/path/to/output.mkv";
-        extContainer.style.display = "none";
-    }
-}
-
-// NEW: Trigger the retry API and force a UI refresh
-async function retryTask(taskId) {
-    try {
-        const response = await fetch(`/api/tasks/${taskId}/retry`, { method: 'POST' });
-        if (!response.ok) {
-            const data = await response.json();
-            alert(`Error: ${data.detail}`);
-            return;
-        }
-        fetchTasks(); // Instantly refresh the UI to show it as Pending
-    } catch (error) {
-        console.error("Retry failed:", error);
-    }
-}
-
-// NEW: Trigger the cancel API and force a UI refresh
-async function cancelTask(taskId) {
-    if (!confirm("Are you sure you want to cancel this task?")) {
-        return;
-    }
-    try {
-        const response = await fetch(`/api/tasks/${taskId}/cancel`, { method: 'POST' });
-        if (!response.ok) {
-            const data = await response.json();
-            alert(`Error: ${data.detail}`);
-            return;
-        }
-        fetchTasks(); // Instantly refresh the UI
-    } catch (error) {
-        console.error("Cancel failed:", error);
-    }
-}
-
-// NEW: Fetch and populate the global bookmarks datalist
-async function fetchBookmarks() {
-    try {
-        const response = await fetch('/api/config/bookmarks');
-        const bookmarks = await response.json();
-        
-        const datalist = document.getElementById('bookmarks-list');
-        datalist.innerHTML = ''; 
-        
-        Object.entries(bookmarks).forEach(([name, path]) => {
-            const option = document.createElement('option');
-            option.value = path;
-            // The browser will show the name alongside the path in the dropdown
-            option.textContent = name; 
-            datalist.appendChild(option);
-        });
-    } catch (error) {
-        console.error("Failed to load bookmarks:", error);
-    }
-}
-
-async function fetchGenericCards() {
-    try {
-        const response = await fetch('/api/config/generic_cards');
-        const cards = await response.json();
-        const container = document.getElementById('generic-cards-container');
-        container.innerHTML = '';
-
-        Object.entries(cards).forEach(([cardName, config]) => {
-            const cardDiv = document.createElement('div');
-            cardDiv.className = 'card';
-            
-            // Remove spaces for clean HTML IDs
-            const safeName = cardName.replace(/\s+/g, '');
-            let html = `<h4>${cardName}</h4><form id="form-${safeName}">`;
-
-            // Dynamically generate inputs based on schema
-            config.inputs.forEach(input => {
-                html += `<div class="input-group" style="margin-bottom: 10px;">`;
-                html += `<label style="display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.85em;">${input.label}</label>`;
-                
-                // If it is a directory type, reuse our existing fs-bookmarks datalist!
-                if (input.type === 'directory') {
-                    html += `<input type="text" id="${safeName}-${input.id}" name="${input.id}" list="bookmarks-list" autocomplete="off" placeholder="Double-click to view bookmarks..." style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required>`;
-                } else if (input.type === 'textarea') {
-                    html += `<textarea id="${safeName}-${input.id}" name="${input.id}" rows="4" placeholder="Paste links here..." style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required></textarea>`;
-                } else {
-                    html += `<input type="text" id="${safeName}-${input.id}" name="${input.id}" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; box-sizing: border-box;" required>`;
-                }
-                html += `</div>`;
-            });
-
-            html += `<button type="submit" class="btn-primary" style="margin-top: 10px; width: 100%; padding: 10px; background: #2ecc71; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Queue Task</button>`;
-            html += `</form>`;
-            
-            cardDiv.innerHTML = html;
-            container.appendChild(cardDiv);
-
-            // Attach Submission Event Listener
-            const formElement = cardDiv.querySelector('form');
-            formElement.onsubmit = function(e) {
-                e.preventDefault();
-                fireGenericTask(cardName, safeName, formElement, config.inputs);
-            };
-        });
-    } catch (error) {
-        console.error("Failed to load Generic Cards:", error);
-    }
-}
-
-// NEW: Switchboard Execution
 async function fireSwitchboard(category, btnName, btnElement) {
-    // 1. Lock the button and show spinner
     const originalText = btnElement.textContent;
     btnElement.disabled = true;
-    btnElement.innerHTML = `<div class="css-spinner"></div>`;
+    btnElement.textContent = "Running...";
 
     try {
         const response = await fetch('/api/execute/switchboard', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category: category, button_name: btnName })
+            body: JSON.stringify({ category, button_name: btnName })
         });
 
         const data = await response.json();
 
-        // 2. Handle Success or Failure UI
         if (response.ok) {
-            btnElement.classList.add('success');
-            btnElement.innerHTML = `✅`;
-            
-            // NEW: Populate and open the Result Modal
-            document.getElementById('sb-modal-title').textContent = `${btnName} Result`;
-            document.getElementById('sb-modal-output').textContent = data.message;
-            document.getElementById('switchboard-modal').style.display = 'flex';
-            
+            btnElement.textContent = "✓ Success";
+            if (data.type === "immediate" || data.type === "detached") {
+                document.getElementById('sb-modal-title').textContent = `${btnName} Result`;
+                document.getElementById('sb-modal-output').textContent = data.output || 'Command executed.';
+                document.getElementById('switchboard-modal').style.display = 'flex';
+            } else {
+                showToast(data.message, "success");
+                fetchTasks();
+            }
         } else {
-            btnElement.classList.add('error');
-            btnElement.innerHTML = `❌`;
-            console.error(`[Switchboard Error]: ${data.detail}`);
-            alert(`Error: ${data.detail}`);
+            btnElement.textContent = "✕ Failed";
+            showToast(`Error: ${data.detail}`, "error");
         }
     } catch (error) {
-        btnElement.classList.add('error');
-        btnElement.innerHTML = `❌`;
-        console.error("Switchboard execution failed:", error);
+        btnElement.textContent = "✕ Error";
+        showToast("Execution failed: " + error.message, "error");
     } finally {
-        // 3. Revert back to normal state after 2 seconds
         setTimeout(() => {
-            btnElement.classList.remove('success', 'error');
-            btnElement.innerHTML = originalText;
+            btnElement.textContent = originalText;
             btnElement.disabled = false;
         }, 2000);
     }
 }
 
-// NEW: Execute Generic Task
-async function fireGenericTask(cardName, safeName, formElement, schemaInputs) {
+function closeSwitchboardModal() {
+    document.getElementById('switchboard-modal').style.display = 'none';
+}
+
+async function fetchGenericCards() {
+    try {
+        const response = await fetch('/api/config/cards');
+        const cards = await response.json();
+        const container = document.getElementById('generic-cards-container');
+        if (!container) return;
+        container.innerHTML = '';
+        
+        Object.entries(cards).forEach(([cardName, config]) => {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'card';
+            const safeName = cardName.replace(/[^a-zA-Z0-9]/g, '-');
+            
+            let html = `<h4>${escapeHtml(cardName)}</h4>`;
+            html += `<form id="form-${safeName}">`;
+            
+            (config.fields || []).forEach(f => {
+                html += `<div style="margin-bottom: 12px;">`;
+                html += `<label for="${safeName}-${f.name}">${escapeHtml(f.label || f.name)}</label>`;
+                if (f.type === 'path') {
+                    html += `<input type="text" id="${safeName}-${f.name}" list="bookmarks-list" value="${escapeHtml(f.default || '')}">`;
+                } else {
+                    html += `<input type="text" id="${safeName}-${f.name}" value="${escapeHtml(f.default || '')}">`;
+                }
+                html += `</div>`;
+            });
+
+            html += `<button type="submit" class="btn btn-primary" style="width: 100%;">Queue Task</button>`;
+            html += `</form>`;
+            
+            cardDiv.innerHTML = html;
+            container.appendChild(cardDiv);
+
+            const formElement = cardDiv.querySelector('form');
+            formElement.onsubmit = (e) => {
+                e.preventDefault();
+                fireGenericTask(cardName, safeName, formElement, config.fields);
+            };
+        });
+    } catch (error) {
+        console.error("Failed to load custom cards:", error);
+    }
+}
+
+async function fireGenericTask(cardName, safeName, formElement, fields) {
     const submitBtn = formElement.querySelector('button');
     const originalText = submitBtn.textContent;
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<div class="css-spinner" style="border-top-color: #fff;"></div>'; 
+    submitBtn.textContent = "Queueing...";
 
-    // Gather inputs into a dictionary
     const inputsData = {};
-    schemaInputs.forEach(input => {
-        const field = document.getElementById(`${safeName}-${input.id}`);
-        inputsData[input.id] = field.value;
+    (fields || []).forEach(f => {
+        const field = document.getElementById(`${safeName}-${f.name}`);
+        if (field) inputsData[f.name] = field.value;
     });
 
     try {
         const response = await fetch('/api/execute/generic', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                card_name: cardName,
-                inputs: inputsData
-            })
+            body: JSON.stringify({ card_name: cardName, inputs: inputsData })
         });
 
         const data = await response.json();
-
         if (response.ok) {
-            submitBtn.style.background = '#27ae60';
-            if (data.task_id) {
-                submitBtn.textContent = `Queued (ID: ${data.task_id.split('-')[0]})`;
-            } else {
-                submitBtn.textContent = `Queued (${data.queued_count || 'Multi'} Tasks)`;
-            }
-            formElement.reset(); 
-            
-            // Force the task list to update immediately and switch tabs
+            showToast(data.message, "success");
+            formElement.reset();
             fetchTasks();
-            setTimeout(() => switchTab('tasks'), 600); 
+            setTimeout(() => switchTab('tasks'), 500);
         } else {
-            alert(`Error: ${data.detail}`);
-            submitBtn.style.background = '#e74c3c';
-            submitBtn.textContent = 'Failed';
+            showToast(`Error: ${data.detail}`, "error");
         }
     } catch (error) {
-        console.error("Generic execution failed:", error);
-        submitBtn.style.background = '#e74c3c';
-        submitBtn.textContent = 'Error';
+        showToast("Execution failed: " + error.message, "error");
     } finally {
         setTimeout(() => {
             submitBtn.disabled = false;
-            submitBtn.style.background = '#2ecc71';
             submitBtn.textContent = originalText;
-        }, 3000);
+        }, 2000);
     }
 }
 
-// NEW: Close the Switchboard Result Modal
-function closeSwitchboardModal() {
-    document.getElementById('switchboard-modal').style.display = 'none';
-}
-
-// NEW: Filter Handlers for Tasks Queue
-let filterDebounceTimeout = null;
-
-function applyFilters() {
-    loadedTasks = {}; // Clear loaded cache
-    fetchTasks(0);    // Start fetch from offset 0
-}
-
-function applyFiltersWithDebounce() {
-    if (filterDebounceTimeout) {
-        clearTimeout(filterDebounceTimeout);
-    }
-    filterDebounceTimeout = setTimeout(() => {
-        applyFilters();
-    }, 300); // 300ms debounce
-}
-
-function clearFilters() {
-    const queueFilter = document.getElementById('filter-queue');
-    const statusFilter = document.getElementById('filter-status');
-    const commandFilter = document.getElementById('filter-command');
-    
-    if (queueFilter) queueFilter.value = '';
-    if (statusFilter) statusFilter.value = '';
-    if (commandFilter) commandFilter.value = '';
-    
-    applyFilters();
-}
-
-async function purgeTasks() {
-    const ageSelect = document.getElementById('purge-age');
-    if (!ageSelect) return;
-    const age = ageSelect.value;
-    
-    let confirmationMsg = `Are you sure you want to purge tasks older than ${ageSelect.options[ageSelect.selectedIndex].text}?`;
-    if (age === 'all') {
-        confirmationMsg = "Are you sure you want to purge the ENTIRE tasks queue history? (This will NOT affect active Pending or Running tasks)";
-    }
-    
-    if (!confirm(confirmationMsg)) {
-        return;
-    }
-    
-    try {
-        const response = await fetch(`/api/tasks/purge?age=${age}`, { method: 'POST' });
-        const data = await response.json();
-        if (response.ok) {
-            alert(data.message);
-            applyFilters(); // Instantly refresh the tasks list
-        } else {
-            alert(`Error: ${data.detail}`);
-        }
-    } catch (error) {
-        console.error("Purge failed:", error);
-        alert("Failed to connect to the Pareo engine.");
-    }
-}
-
-// --- TASK TICKER LOGIC ---
-let tickerTimeout = null;
-
-async function updateTaskTicker() {
-    try {
-        const response = await fetch('/api/tasks/counts');
-        if (!response.ok) return;
-        const data = await response.json();
-        
-        const tickerBadge = document.getElementById('task-ticker');
-        const tickerDot = document.getElementById('ticker-dot');
-        const tickerText = document.getElementById('ticker-text');
-        
-        if (!tickerBadge || !tickerText) return;
-        
-        const ongoing = data.ongoing || 0;
-        const pending = data.pending || 0;
-        
-        tickerText.textContent = `Ongoing: ${ongoing} | Pending: ${pending}`;
-        
-        if (ongoing > 0 || pending > 0) {
-            tickerBadge.classList.add('active');
-            if (tickerDot) {
-                tickerDot.className = 'ticker-dot active';
-            }
-        } else {
-            tickerBadge.classList.remove('active');
-            if (tickerDot) {
-                tickerDot.className = 'ticker-dot idle';
-            }
-        }
-        
-        // Exact requirement: 5s refresh when there are pending tasks, 1min (60s) refresh when there are no pending tasks.
-        const nextInterval = pending > 0 ? 5000 : 60000;
-        
-        if (tickerTimeout) clearTimeout(tickerTimeout);
-        tickerTimeout = setTimeout(updateTaskTicker, nextInterval);
-        
-    } catch (error) {
-        console.error("Failed to update task ticker:", error);
-        if (tickerTimeout) clearTimeout(tickerTimeout);
-        tickerTimeout = setTimeout(updateTaskTicker, 15000);
-    }
-}
-
-let currentAuthMode = 'login'; // 'login' or 'setup'
-
-function showAuthOverlay(mode) {
-    console.log("[Pareo Auth] showAuthOverlay called with mode:", mode);
-    currentAuthMode = mode;
-    const overlay = document.getElementById('auth-overlay');
-    const title = document.getElementById('auth-title');
-    const desc = document.getElementById('auth-desc');
-    const errorMsg = document.getElementById('auth-error');
-    const passInput = document.getElementById('auth-password');
-    
-    console.log("[Pareo Auth] DOM Elements: overlay=", overlay, "title=", title, "desc=", desc, "errorMsg=", errorMsg, "passInput=", passInput);
-    if (!overlay) {
-        console.error("[Pareo Auth] CRITICAL: auth-overlay element not found in DOM!");
-        return;
-    }
-    
-    errorMsg.style.display = 'none';
-    passInput.value = '';
-    
-    if (mode === 'setup') {
-        title.textContent = "Secure Your Instance";
-        desc.textContent = "Set a Master Password to lock down the Pareo engine.";
-        passInput.placeholder = "Enter new master password";
-    } else {
-        title.textContent = "Authentication Required";
-        desc.textContent = "Enter your master password to access Pareo.";
-        passInput.placeholder = "Password";
-    }
-    
-    overlay.style.display = 'flex';
-    passInput.focus();
-}
-
-async function handleAuthSubmit(event) {
-    event.preventDefault();
-    const password = document.getElementById('auth-password').value;
-    const errorMsg = document.getElementById('auth-error');
-    
-    if (!password) return;
-    
-    try {
-        if (currentAuthMode === 'setup') {
-            const res = await originalFetch('/api/auth/setup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: password })
-            });
-            const data = await res.json();
-            if (res.ok && data.token) {
-                localStorage.setItem('pareo_auth_token', data.token);
-                localStorage.setItem('pareo_auth_timestamp', Date.now().toString());
-                document.getElementById('auth-overlay').style.display = 'none';
-                initApp();
-            } else {
-                errorMsg.textContent = data.detail || "Setup failed.";
-                errorMsg.style.display = 'block';
-            }
-        } else {
-            const res = await originalFetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: password })
-            });
-            const data = await res.json();
-            if (res.ok && data.token) {
-                localStorage.setItem('pareo_auth_token', data.token);
-                localStorage.setItem('pareo_auth_timestamp', Date.now().toString());
-                document.getElementById('auth-overlay').style.display = 'none';
-                initApp();
-            } else {
-                errorMsg.textContent = data.detail || "Incorrect password.";
-                errorMsg.style.display = 'block';
-            }
-        }
-    } catch (e) {
-        errorMsg.textContent = "Network error. Try again.";
-        errorMsg.style.display = 'block';
-    }
-}
-
-function logout() {
-    localStorage.removeItem('pareo_auth_token');
-    localStorage.removeItem('pareo_auth_timestamp');
-    window.location.reload();
-}
-
-async function initApp() {
-    console.log("[Pareo Auth] initApp() verifying session state...");
-    try {
-        const response = await fetch('/api/auth/verify');
-        const data = await response.json();
-        console.log("[Pareo Auth] /api/auth/verify response data:", data);
-        const lockBtn = document.getElementById('btn-lock');
-        
-        if (data.status === 'setup_needed') {
-            console.log("[Pareo Auth] Routing user to master password setup overlay.");
-            if (lockBtn) lockBtn.style.display = 'none';
-            showAuthOverlay('setup');
-            return;
-        } else if (data.status === 'unauthorized') {
-            console.log("[Pareo Auth] Routing user to login overlay.");
-            if (lockBtn) lockBtn.style.display = 'none';
-            showAuthOverlay('login');
-            return;
-        }
-        
-        console.log("[Pareo Auth] Client authorized. Displaying lock button.");
-        if (lockBtn) lockBtn.style.display = 'inline-flex';
-        
-    } catch (error) {
-        console.error("[Pareo Auth] Verify check failed:", error);
-    }
-    
-    console.log("[Pareo Auth] Session verified/bypassed. Loading page cards and queues...");
-    // Auth is verified or disabled, load the app
-    fetchTasks(0);
-    updateTaskTicker();
-    fetchProfiles();
-    fetchFsConfig();
-    fetchBookmarks();
-    fetchRemotesConfig();
-    fetchSwitchboardConfig();
-    fetchGenericCards();
-    fetchProcessConfig();
-    switchTab('tasks');
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-    initApp();
-});
-
-// Start the polling loop (every 2.5 minutes)
-setInterval(() => {
-    const authOverlay = document.getElementById('auth-overlay');
-    if (!authOverlay || authOverlay.style.display === 'none') {
-        fetchTasks(0);
-    }
-}, 150000);
-
-// --- PROCESS MONITORING LOGIC ---
-let processConfig = {};
-let activeLogProcess = null;
-let logRefreshInterval = null;
-
+// --------------------------------------------------------------------------
+// LOCAL PROCESS MONITOR & SUPERVISOR
+// --------------------------------------------------------------------------
 async function fetchProcessConfig() {
     try {
         const response = await fetch('/api/config/processes');
         processConfig = await response.json();
         renderProcessListPlaceholder();
-        
-        // Only fetch statuses on load if we are on the utilities tab
-        const activeTabBtn = document.querySelector('.nav-btn.active');
-        if (activeTabBtn && activeTabBtn.id === 'btn-utilities') {
-            fetchProcessStatuses();
-        }
     } catch (error) {
         console.error("Failed to fetch process configuration:", error);
     }
@@ -1392,7 +1436,7 @@ function renderProcessListPlaceholder() {
     if (!container) return;
     
     if (Object.keys(processConfig).length === 0) {
-        container.innerHTML = `<p style="color: #999; font-style: italic; font-size: 0.9em;">No processes configured in config.json.</p>`;
+        container.innerHTML = `<p style="color: var(--text-muted); font-style: italic;">No processes configured in config.json.</p>`;
         return;
     }
     
@@ -1400,26 +1444,26 @@ function renderProcessListPlaceholder() {
     for (const [name, info] of Object.entries(processConfig)) {
         const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
         html += `
-            <div class="process-card" id="proc-card-${safeName}" style="border: 1px solid var(--base01) !important; padding: 12px; border-radius: 6px; display: flex; flex-direction: column; gap: 8px; background: var(--base03) !important; color: var(--base0) !important;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div class="card" id="proc-card-${safeName}" style="padding: 12px; margin-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <div>
-                        <strong style="font-size: 1.05em; color: var(--cyan);">${name}</strong>
-                        <span style="font-size: 0.85em; color: var(--base00); margin-left: 8px;">(Port: ${info.port})</span>
+                        <strong style="color: var(--accent-primary); font-size: 1.05em;">${escapeHtml(name)}</strong>
+                        <span style="font-size: 0.85em; color: var(--text-muted); margin-left: 6px;">(Port: ${info.port})</span>
                     </div>
-                    <span class="process-status-badge badge" id="proc-badge-${safeName}" style="background: var(--base01); color: var(--base3); border-radius: 12px; padding: 3px 8px; font-size: 0.8em; font-weight: bold;">Checking...</span>
+                    <span class="task-status-pill" id="proc-badge-${safeName}" style="background: var(--bg-surface-elevated); color: var(--text-muted);">Checking...</span>
                 </div>
                 
-                <div style="font-size: 0.85em; background: var(--base02) !important; padding: 6px 10px; border-radius: 4px; font-family: monospace; border-left: 3px solid var(--cyan); overflow-x: auto; white-space: nowrap; margin: 4px 0; color: var(--cyan) !important;">
-                    <code>${info.command}</code>
+                <div style="font-size: 0.85em; background: var(--bg-terminal); padding: 6px 10px; border-radius: var(--radius-hud); font-family: var(--font-family-mono); overflow-x: auto; white-space: nowrap; margin: 8px 0; border: 1px solid var(--border-subtle);">
+                    <code>${escapeHtml(info.command)}</code>
                 </div>
                 
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 4px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <div style="display: flex; gap: 6px;">
-                        <button class="btn btn-sm proc-start-btn" onclick="startProcess('${name}')" style="background: #27ae60; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" disabled>Start</button>
-                        <button class="btn btn-sm proc-stop-btn" onclick="stopProcess('${name}', false)" style="background: #f39c12; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" disabled>Stop</button>
-                        <button class="btn btn-sm proc-kill-btn" onclick="stopProcess('${name}', true)" style="background: #e74c3c; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;" disabled>Force Kill</button>
+                        <button class="btn btn-secondary btn-sm proc-start-btn" onclick="startProcess('${name}')" disabled>Start</button>
+                        <button class="btn btn-secondary btn-sm proc-stop-btn" onclick="stopProcess('${name}', false)" disabled>Stop</button>
+                        <button class="btn btn-danger btn-sm proc-kill-btn" onclick="stopProcess('${name}', true)" disabled>Force Kill</button>
                     </div>
-                    ${info.log_file ? `<button class="btn btn-sm" onclick="openProcessLogsModal('${name}')" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">View Logs</button>` : ''}
+                    ${info.log_file ? `<button class="btn btn-secondary btn-sm" onclick="openProcessLogsModal('${name}')">View Logs</button>` : ''}
                 </div>
             </div>
         `;
@@ -1447,16 +1491,14 @@ async function fetchProcessStatuses() {
             if (statusInfo.status === 'Running') {
                 const pidStr = statusInfo.pid ? ` (PID: ${statusInfo.pid})` : '';
                 badge.textContent = `Running${pidStr}`;
-                badge.style.background = '#2ecc71'; // Green
-                badge.style.color = '#fff';
+                badge.className = 'task-status-pill status-running';
                 
                 if (startBtn) startBtn.disabled = true;
                 if (stopBtn) stopBtn.disabled = false;
                 if (killBtn) killBtn.disabled = false;
             } else {
                 badge.textContent = 'Stopped';
-                badge.style.background = '#95a5a6'; // Gray
-                badge.style.color = '#fff';
+                badge.className = 'task-status-pill status-cancelled';
                 
                 if (startBtn) startBtn.disabled = false;
                 if (stopBtn) stopBtn.disabled = true;
@@ -1471,11 +1513,7 @@ async function fetchProcessStatuses() {
 async function startProcess(name) {
     const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
     const badge = document.getElementById(`proc-badge-${safeName}`);
-    if (badge) {
-        badge.textContent = 'Starting...';
-        badge.style.background = '#3498db';
-        badge.style.color = '#fff';
-    }
+    if (badge) badge.textContent = 'Starting...';
     
     try {
         const response = await fetch('/api/processes/start', {
@@ -1485,13 +1523,14 @@ async function startProcess(name) {
         });
         const data = await response.json();
         if (response.ok) {
-            setTimeout(fetchProcessStatuses, 1000); // Small delay to let it bind port
+            showToast(`Started process ${name}`, 'success');
+            setTimeout(fetchProcessStatuses, 1000);
         } else {
-            alert(`Error starting process: ${data.detail}`);
+            showToast(`Error starting process: ${data.detail}`, 'error');
             fetchProcessStatuses();
         }
     } catch (error) {
-        console.error("Failed to start process:", error);
+        showToast("Failed to start process: " + error.message, 'error');
         fetchProcessStatuses();
     }
 }
@@ -1499,11 +1538,7 @@ async function startProcess(name) {
 async function stopProcess(name, force = false) {
     const safeName = name.replace(/[^a-zA-Z0-9]/g, '-');
     const badge = document.getElementById(`proc-badge-${safeName}`);
-    if (badge) {
-        badge.textContent = force ? 'Killing...' : 'Stopping...';
-        badge.style.background = '#e74c3c';
-        badge.style.color = '#fff';
-    }
+    if (badge) badge.textContent = force ? 'Killing...' : 'Stopping...';
     
     try {
         const response = await fetch('/api/processes/stop', {
@@ -1513,13 +1548,14 @@ async function stopProcess(name, force = false) {
         });
         const data = await response.json();
         if (response.ok) {
-            setTimeout(fetchProcessStatuses, 1000); // Give it a short delay to terminate
+            showToast(`Stopped process ${name}`, 'info');
+            setTimeout(fetchProcessStatuses, 1000);
         } else {
-            alert(`Error stopping process: ${data.detail}`);
+            showToast(`Error stopping process: ${data.detail}`, 'error');
             fetchProcessStatuses();
         }
     } catch (error) {
-        console.error("Failed to stop process:", error);
+        showToast("Failed to stop process: " + error.message, 'error');
         fetchProcessStatuses();
     }
 }
@@ -1534,7 +1570,6 @@ async function openProcessLogsModal(name) {
     
     loadProcessLogs(name);
     
-    // Auto-refresh logs every 2 seconds while modal is open
     if (logRefreshInterval) clearInterval(logRefreshInterval);
     logRefreshInterval = setInterval(() => loadProcessLogs(name), 2000);
 }
@@ -1551,18 +1586,8 @@ async function loadProcessLogs(name) {
             return;
         }
         const data = await response.json();
-        
-        // Save scroll position
-        const isScrolledToBottom = pre.scrollHeight - pre.clientHeight <= pre.scrollTop + 50;
-        
         pre.textContent = data.logs || '(Empty logs)';
-        
-        // Keep scrolled to bottom if it was already at the bottom
-        if (isScrolledToBottom) {
-            pre.scrollTop = pre.scrollHeight;
-        }
     } catch (error) {
-        console.error("Failed to load logs:", error);
         pre.textContent = `Network error loading logs: ${error.message}`;
     }
 }
@@ -1576,24 +1601,14 @@ function closeProcessLogsModal() {
     }
 }
 
-// --- FOLDER LIBRARIES FRONTEND ---
-let currentLibraryName = "";
-let currentLibrarySubpath = "";
-let currentLibraryItems = [];
-let currentLibraryIsCached = false;
-let currentLibrarySourceBase = "";
-let currentLibrarySourceServer = "";
-let currentLibraryBackupBase = "";
-let currentLibraryBackupServer = "";
-
+// --------------------------------------------------------------------------
+// REPOSITORY LIBRARIES FRONTEND
+// --------------------------------------------------------------------------
 async function fetchLibrariesList() {
     showLoading(40);
     try {
         const response = await fetch('/api/libraries');
-        if (!response.ok) {
-            console.error("Failed to load libraries config");
-            return;
-        }
+        if (!response.ok) return;
         const libraries = await response.json();
         renderLibrariesGrid(libraries);
     } catch (error) {
@@ -1607,477 +1622,133 @@ function renderLibrariesGrid(libraries) {
     const grid = document.getElementById('libraries-grid');
     if (!grid) return;
     grid.innerHTML = '';
-
-    const keys = Object.keys(libraries);
-    if (keys.length === 0) {
-        grid.innerHTML = '<div style="color: var(--base1); grid-column: 1/-1; text-align: center; padding: 20px;">No folder libraries configured in config.json.</div>';
+    
+    if (Object.keys(libraries).length === 0) {
+        grid.innerHTML = '<div style="color: var(--text-muted); font-style: italic;">No folder libraries configured.</div>';
         return;
     }
-
-    keys.forEach(name => {
-        const lib = libraries[name];
+    
+    for (const [name, config] of Object.entries(libraries)) {
         const card = document.createElement('div');
-        card.className = 'library-card';
-        card.style.cssText = `
-            background: var(--base02);
-            border: 1px solid var(--base01);
-            border-radius: 8px;
-            padding: 20px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        `;
-        card.addEventListener('mouseenter', () => {
-            card.style.borderColor = 'var(--cyan)';
-            card.style.transform = 'translateY(-2px)';
-        });
-        card.addEventListener('mouseleave', () => {
-            card.style.borderColor = 'var(--base01)';
-            card.style.transform = 'translateY(0)';
-        });
-        card.onclick = () => openLibrary(name);
-
+        card.className = 'card';
+        card.style.cursor = 'pointer';
+        card.onclick = () => openLibraryDetail(name, config);
+        
         card.innerHTML = `
-            <h4 style="margin: 0 0 15px 0; color: var(--cyan); display: flex; align-items: center; gap: 8px;">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
-                ${name}
-            </h4>
-            <div style="font-size: 0.85em; display: flex; flex-direction: column; gap: 8px; color: var(--base0);">
-                <div>
-                    <strong style="color: var(--base1);">Source:</strong>
-                    <span style="font-family: monospace; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
-                        [${lib.source.server}] ${lib.source.path}
-                    </span>
-                </div>
-                <div>
-                    <strong style="color: var(--base1);">Backup:</strong>
-                    <span style="font-family: monospace; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;">
-                        [${lib.backup.server}] ${lib.backup.path}
-                    </span>
-                </div>
+            <h4 style="color: var(--accent-primary); margin-bottom: 8px;">📁 ${escapeHtml(name)}</h4>
+            <div style="font-size: 0.85em; color: var(--text-secondary); line-height: 1.5;">
+                <div><strong>Source:</strong> [${config.source?.server}] ${escapeHtml(config.source?.path)}</div>
+                <div><strong>Backup:</strong> [${config.backup?.server}] ${escapeHtml(config.backup?.path)}</div>
+            </div>
+            <div style="margin-top: 12px; display: flex; justify-content: flex-end;">
+                <button class="btn btn-primary btn-sm">Explore & Sync →</button>
             </div>
         `;
         grid.appendChild(card);
-    });
+    }
 }
 
 function showLibrariesList() {
-    document.getElementById('libraries-list-container').style.display = 'block';
     document.getElementById('library-detail-container').style.display = 'none';
-    currentLibraryName = "";
-    currentLibrarySubpath = "";
-    currentLibraryItems = [];
+    document.getElementById('libraries-list-container').style.display = 'block';
+    fetchLibrariesList();
 }
 
-async function openLibrary(name, subpath = "", deepScan = false) {
+async function openLibraryDetail(name, config) {
     currentLibraryName = name;
-    currentLibrarySubpath = subpath;
+    currentLibrarySubpath = "";
+    currentLibrarySourceBase = config.source?.path || "";
+    currentLibrarySourceServer = config.source?.server || "local";
+    currentLibraryBackupBase = config.backup?.path || "";
+    currentLibraryBackupServer = config.backup?.server || "local";
     
     document.getElementById('libraries-list-container').style.display = 'none';
-    const detailContainer = document.getElementById('library-detail-container');
-    detailContainer.style.display = 'block';
+    document.getElementById('library-detail-container').style.display = 'block';
+    document.getElementById('library-detail-title').textContent = `${name} Repository`;
     
-    document.getElementById('library-detail-title').textContent = `${name}`;
-    document.getElementById('library-search').value = "";
-    document.getElementById('library-status-filter').value = "all";
-    
-    // Toggle deep scan styling
-    const scanBtn = document.getElementById('btn-library-deep-scan');
-    if (deepScan) {
-        scanBtn.textContent = "Exit Deep Scan";
-        scanBtn.style.background = "var(--red)";
-        scanBtn.style.color = "#fff";
-        scanBtn.onclick = () => openLibrary(name, subpath, false);
-    } else {
-        scanBtn.textContent = "Deep Sync Scan";
-        scanBtn.style.background = "var(--yellow)";
-        scanBtn.style.color = "var(--base03)";
-        scanBtn.onclick = () => openLibrary(name, subpath, true);
-    }
-
-    renderLibraryBreadcrumbs();
-    await fetchLibraryItems(deepScan);
+    await fetchLibraryItems();
 }
 
-function renderLibraryBreadcrumbs() {
-    const container = document.getElementById('library-breadcrumbs');
-    if (!container) return;
-    container.innerHTML = '';
-
-    const rootLink = document.createElement('span');
-    rootLink.textContent = 'Root';
-    rootLink.style.cssText = 'cursor: pointer; color: var(--cyan); font-weight: bold;';
-    rootLink.onclick = () => openLibrary(currentLibraryName, "");
-    container.appendChild(rootLink);
-
-    if (currentLibrarySubpath) {
-        const parts = currentLibrarySubpath.split('/');
-        let pathAccumulator = "";
-        parts.forEach((part, index) => {
-            if (!part) return;
-            pathAccumulator += (index === 0 ? '' : '/') + part;
-            
-            const divider = document.createElement('span');
-            divider.textContent = ' / ';
-            divider.style.color = 'var(--base01)';
-            container.appendChild(divider);
-
-            const segmentLink = document.createElement('span');
-            segmentLink.textContent = part;
-            segmentLink.style.cssText = 'cursor: pointer; color: var(--cyan);';
-            const targetPath = pathAccumulator;
-            segmentLink.onclick = () => openLibrary(currentLibraryName, targetPath);
-            container.appendChild(segmentLink);
-        });
-    }
-}
-
-async function fetchLibraryItems(deepScan = false) {
-    showLoading(50);
-    const tbody = document.getElementById('library-items-table-body');
-    if (tbody) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="5" style="text-align: center; padding: 40px;">
-                    <div class="spinner"></div>
-                    <div style="color: var(--base1); font-weight: bold; font-size: 0.95em; margin-top: 10px;">Scanning folders and aligning metadata...</div>
-                </td>
-            </tr>
-        `;
-    }
-    
+async function fetchLibraryItems(deepScan = false, nocache = false) {
+    showLoading(40);
     try {
-        const url = `/api/libraries/browse?library_name=${encodeURIComponent(currentLibraryName)}&subpath=${encodeURIComponent(currentLibrarySubpath)}&deep_scan=${deepScan}`;
+        let url = `/api/libraries/browse?library_name=${encodeURIComponent(currentLibraryName)}&subpath=${encodeURIComponent(currentLibrarySubpath)}`;
+        if (deepScan) url += '&deep_scan=true';
+        if (nocache) url += '&nocache=true';
+        
         const response = await fetch(url);
         if (!response.ok) {
             const err = await response.json();
-            alert(`Browse failed: ${err.detail}`);
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--red); padding: 20px;">Error: ${err.detail}</td></tr>`;
+            showToast(`Browse failed: ${err.detail}`, 'error');
             return;
         }
+        
         const data = await response.json();
-        
-        currentLibrarySourceBase = data.source_base || "";
-        currentLibrarySourceServer = data.source_server || "";
-        currentLibraryBackupBase = data.backup_base || "";
-        currentLibraryBackupServer = data.backup_server || "";
-        
         currentLibraryItems = data.items || [];
-        currentLibraryIsCached = !!data.cached;
+        currentLibraryIsCached = data.cached || false;
         
         const cachedIndicator = document.getElementById('library-cached-indicator');
         if (cachedIndicator) {
             cachedIndicator.style.display = currentLibraryIsCached ? 'inline-block' : 'none';
         }
         
-        renderLibraryItems(currentLibraryItems);
-        
-        // If results are cached, lazy-load fresh data in the background
-        if (currentLibraryIsCached) {
-            const freshUrl = url + "&nocache=true";
-            fetch(freshUrl)
-                .then(async (res) => {
-                    if (res.ok) {
-                        const freshData = await res.json();
-                        if (currentLibraryName === freshData.library_name && currentLibrarySubpath === freshData.subpath) {
-                            currentLibraryIsCached = false;
-                            if (cachedIndicator) {
-                                cachedIndicator.style.display = 'none';
-                            }
-                            currentLibraryItems = freshData.items || [];
-                            renderLibraryItems(currentLibraryItems);
-                        }
-                    }
-                })
-                .catch(err => console.error("Error loading fresh library items:", err));
-        }
-    } catch (error) {
-        console.error("Error loading library items:", error);
-    } finally {
-        hideLoading();
-    }
-}
-
-function formatSize(size) {
-    if (size === null || size === undefined) return '-';
-    return (size / 1024 / 1024).toFixed(2) + " MB";
-}
-
-function renderLibraryItems(items) {
-    const tbody = document.getElementById('library-items-table-body');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    if (items.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--base1);">No discrepancies found (All identical).</td></tr>';
-        return;
-    }
-
-    // Lazy / progressive rendering via requestAnimationFrame to keep DOM responsive
-    const chunkSize = 45;
-    let index = 0;
-
-    function renderNextChunk() {
-        const chunk = items.slice(index, index + chunkSize);
-        chunk.forEach(item => {
-            const tr = createLibraryRow(item);
-            tbody.appendChild(tr);
-        });
-        index += chunkSize;
-        if (index < items.length) {
-            requestAnimationFrame(renderNextChunk);
-        }
-    }
-
-    renderNextChunk();
-}
-
-function createLibraryRow(item) {
-    const tr = document.createElement('tr');
-    tr.style.borderBottom = '1px solid var(--base02)';
-    
-    // Icon and Name
-    const nameCell = document.createElement('td');
-    nameCell.style.padding = '10px';
-    nameCell.style.verticalAlign = 'middle';
-    
-    const isDir = item.is_dir;
-    const iconHtml = isDir 
-        ? `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--blue); vertical-align: middle; margin-right: 8px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`
-        : `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--base1); vertical-align: middle; margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`;
-        
-    const nameSpan = document.createElement('span');
-    nameSpan.innerHTML = iconHtml + (isDir ? `<span style="font-weight: bold; color: var(--cyan); cursor: pointer;">${item.name}</span>` : item.name);
-    if (currentLibraryIsCached) {
-        nameSpan.style.opacity = '0.55';
-        nameSpan.title = 'Showing cached results, loading latest in background...';
-    }
-    
-    if (isDir) {
-        nameSpan.onclick = () => {
-            const nextSubpath = currentLibrarySubpath 
-                ? `${currentLibrarySubpath}/${item.relative_path}`
-                : item.relative_path;
-            openLibrary(currentLibraryName, nextSubpath);
-        };
-    }
-    nameCell.appendChild(nameSpan);
-    tr.appendChild(nameCell);
-
-    // Status Badge
-    const statusCell = document.createElement('td');
-    statusCell.style.padding = '10px';
-    statusCell.style.verticalAlign = 'middle';
-    
-    let statusBadge = "";
-    if (item.status === 'synced') {
-        statusBadge = '<span style="background: #25d36633; color: #25d366; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Synced</span>';
-    } else if (item.status === 'full_sync') {
-        statusBadge = '<span style="background: rgba(38, 139, 210, 0.15); color: #268bd2; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Full-sync</span>';
-    } else if (item.status === 'partial_sync') {
-        statusBadge = '<span style="background: rgba(211, 54, 130, 0.15); color: #d33682; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Partial-sync</span>';
-    } else if (item.status === 'only_source') {
-        statusBadge = '<span style="background: #3498db33; color: #3498db; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Source</span>';
-    } else if (item.status === 'only_backup') {
-        statusBadge = '<span style="background: #e67e2233; color: #e67e22; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Only in Backup</span>';
-    } else if (item.status === 'pending_sync') {
-        statusBadge = '<span style="background: #f1c40f33; color: #f1c40f; padding: 3px 8px; border-radius: 12px; font-size: 0.82em; font-weight: bold;">Pending Sync</span>';
-    }
-    statusCell.innerHTML = statusBadge;
-    tr.appendChild(statusCell);
-
-    // Sizes
-    const srcSizeCell = document.createElement('td');
-    srcSizeCell.style.padding = '10px';
-    srcSizeCell.style.verticalAlign = 'middle';
-    srcSizeCell.textContent = item.source_exists && !isDir ? formatSize(item.source_size) : '-';
-    tr.appendChild(srcSizeCell);
-
-    const bkSizeCell = document.createElement('td');
-    bkSizeCell.style.padding = '10px';
-    bkSizeCell.style.verticalAlign = 'middle';
-    bkSizeCell.textContent = item.backup_exists && !isDir ? formatSize(item.backup_size) : '-';
-    tr.appendChild(bkSizeCell);
-
-    // Actions
-    const actionsCell = document.createElement('td');
-    actionsCell.style.padding = '10px';
-    actionsCell.style.textAlign = 'right';
-    actionsCell.style.verticalAlign = 'middle';
-    actionsCell.style.whiteSpace = 'nowrap';
-    
-    let actionButtons = '';
-    
-    // Backup Action
-    if (item.status === 'only_source' || item.status === 'pending_sync') {
-        actionButtons += `
-            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'backup')" title="Back Up to Backup Location" style="color: var(--orange); margin-left: 6px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 3v12"></path><polyline points="8 7 12 3 16 7"></polyline></svg>
-            </button>
-        `;
-    }
-    
-    // Download/Restore Action
-    if (item.status === 'only_backup' || item.status === 'pending_sync') {
-        actionButtons += `
-            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'restore')" title="Download to Source Location" style="color: var(--cyan); margin-left: 6px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.2 15a4.8 4.8 0 0 1-9.6 0"></path><path d="M12 15V3"></path><polyline points="16 11 12 15 8 11"></polyline></svg>
-            </button>
-        `;
-    }
-    
-    // Bidirectional Sync Action (Only for partial-sync folders)
-    if (item.status === 'partial_sync') {
-        actionButtons += `
-            <button class="action-icon-btn" onclick="syncItem('${item.relative_path.replace(/'/g, "\\'")}', 'both')" title="Bidirectional Sync (Make Identical)" style="color: #d33682; margin-left: 6px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-            </button>
-        `;
-    }
-    
-    // Info / Media Analysis Action
-    if (!isDir) {
-        actionButtons += `
-            <button class="action-icon-btn" onclick="showMediaInfo('${item.relative_path.replace(/'/g, "\\'")}')" title="View Media Info & Conversion" style="color: var(--blue); margin-left: 6px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-            </button>
-        `;
-    }
-    
-    // Rename Action
-    actionButtons += `
-        <button class="action-icon-btn" onclick="renameLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', ${item.source_exists}, ${item.backup_exists}, '${item.name.replace(/'/g, "\\'")}')" title="Rename File/Folder" style="color: var(--yellow); margin-left: 6px;">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path></svg>
-        </button>
-    `;
-    
-    // Delete Actions
-    if (item.source_exists) {
-        actionButtons += `
-            <button class="action-icon-btn" onclick="deleteLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', 'source', '${item.name.replace(/'/g, "\\'")}')" title="Delete from Source" style="color: var(--cyan); margin-left: 6px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 0px 1px var(--red));"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-            </button>
-        `;
-    }
-    if (item.backup_exists) {
-        actionButtons += `
-            <button class="action-icon-btn" onclick="deleteLibraryItem('${item.relative_path.replace(/'/g, "\\'")}', 'backup', '${item.name.replace(/'/g, "\\'")}')" title="Delete from Backup" style="color: var(--orange); margin-left: 6px;">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 0px 1px var(--red));"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-            </button>
-        `;
-    }
-    
-    actionsCell.innerHTML = actionButtons;
-    tr.appendChild(actionsCell);
-    
-    return tr;
-}
-
-async function renameLibraryItem(relativePath, sourceExists, backupExists, currentName) {
-    const newName = prompt(`Enter new name for "${currentName}":`, currentName);
-    if (!newName || newName === currentName) return;
-    
-    const fullRelativePath = currentLibrarySubpath 
-        ? `${currentLibrarySubpath}/${relativePath}` 
-        : relativePath;
-        
-    showLoading(30);
-    try {
-        const promises = [];
-        if (sourceExists) {
-            const srcPath = `${currentLibrarySourceBase}/${fullRelativePath}`;
-            promises.push(fetch('/api/fs/rename', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    source_path: srcPath,
-                    new_name: newName,
-                    remote_server: currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer
-                })
-            }));
-        }
-        if (backupExists) {
-            const bkPath = `${currentLibraryBackupBase}/${fullRelativePath}`;
-            promises.push(fetch('/api/fs/rename', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    source_path: bkPath,
-                    new_name: newName,
-                    remote_server: currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer
-                })
-            }));
-        }
-        
-        const responses = await Promise.all(promises);
-        let success = true;
-        for (let res of responses) {
-            if (!res.ok) {
-                success = false;
-                const err = await res.json();
-                alert(`Rename failed: ${err.detail}`);
-            }
-        }
-        if (success) {
-            showTemporarySyncToast("Renamed successfully.");
-            fetchLibraryItems(document.getElementById('btn-library-deep-scan').textContent === "Exit Deep Scan");
-        }
+        renderBreadcrumbs();
+        filterLibraryItems();
     } catch (e) {
-        console.error("Rename failed:", e);
+        showToast("Error loading library items: " + e.message, 'error');
     } finally {
         hideLoading();
     }
 }
 
-async function deleteLibraryItem(relativePath, target, currentName) {
-    if (!confirm(`Are you sure you want to delete "${currentName}" from the ${target}?`)) return;
+function renderBreadcrumbs() {
+    const container = document.getElementById('library-breadcrumbs');
+    if (!container) return;
+    container.innerHTML = '';
     
-    const fullRelativePath = currentLibrarySubpath 
-        ? `${currentLibrarySubpath}/${relativePath}` 
-        : relativePath;
+    const rootSpan = document.createElement('span');
+    rootSpan.textContent = 'root';
+    rootSpan.style.cursor = 'pointer';
+    rootSpan.style.color = 'var(--accent-primary)';
+    rootSpan.onclick = () => {
+        currentLibrarySubpath = "";
+        fetchLibraryItems();
+    };
+    container.appendChild(rootSpan);
+    
+    if (!currentLibrarySubpath) return;
+    
+    const parts = currentLibrarySubpath.split('/').filter(Boolean);
+    let accum = "";
+    parts.forEach((p, idx) => {
+        accum += (accum ? `/${p}` : p);
+        const thisSub = accum;
         
-    showLoading(30);
-    try {
-        let path = "";
-        let server = "";
-        if (target === 'source') {
-            path = `${currentLibrarySourceBase}/${fullRelativePath}`;
-            server = currentLibrarySourceServer === 'local' ? '' : currentLibrarySourceServer;
+        const sep = document.createElement('span');
+        sep.textContent = ' / ';
+        sep.style.color = 'var(--text-muted)';
+        container.appendChild(sep);
+        
+        const span = document.createElement('span');
+        span.textContent = p;
+        if (idx === parts.length - 1) {
+            span.style.color = 'var(--text-primary)';
+            span.style.fontWeight = 'bold';
         } else {
-            path = `${currentLibraryBackupBase}/${fullRelativePath}`;
-            server = currentLibraryBackupServer === 'local' ? '' : currentLibraryBackupServer;
+            span.style.cursor = 'pointer';
+            span.style.color = 'var(--accent-primary)';
+            span.onclick = () => {
+                currentLibrarySubpath = thisSub;
+                fetchLibraryItems();
+            };
         }
-        
-        const response = await fetch('/api/execute/fs', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'Delete',
-                source_paths: [path],
-                destination_path: '',
-                source_server: server
-            })
-        });
-        
-        if (response.ok) {
-            showTemporarySyncToast(`Deletion task queued for ${target}.`);
-            updateTaskTicker();
-            setTimeout(() => {
-                fetchLibraryItems(document.getElementById('btn-library-deep-scan').textContent === "Exit Deep Scan");
-            }, 1000);
-        } else {
-            const err = await response.json();
-            alert(`Deletion failed: ${err.detail}`);
-        }
-    } catch (e) {
-        console.error("Deletion failed:", e);
-    } finally {
-        hideLoading();
-    }
+        container.appendChild(span);
+    });
 }
 
 function filterLibraryItems() {
-    const query = document.getElementById('library-search').value.toLowerCase().trim();
-    const statusVal = document.getElementById('library-status-filter').value;
+    const query = document.getElementById('library-search')?.value.toLowerCase().trim() || '';
+    const statusVal = document.getElementById('library-status-filter')?.value || 'all';
     
     let filtered = currentLibraryItems;
     
@@ -2095,204 +1766,208 @@ function filterLibraryItems() {
     renderLibraryItems(filtered);
 }
 
-async function syncItem(relativePath, direction) {
-    const fullRelativePath = currentLibrarySubpath 
-        ? `${currentLibrarySubpath}/${relativePath}` 
-        : relativePath;
+function renderLibraryItems(items) {
+    const tbody = document.getElementById('library-items-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 25px;">No items in this directory.</td></tr>';
+        return;
+    }
+    
+    items.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid var(--border-subtle)';
         
-    showLoading(30);
+        const nameCell = document.createElement('td');
+        nameCell.style.padding = '10px';
+        const icon = item.is_dir ? '📁' : '📄';
+        
+        if (item.is_dir) {
+            nameCell.innerHTML = `<span style="cursor: pointer; color: var(--accent-primary); font-weight: bold;">${icon} ${escapeHtml(item.name)}</span>`;
+            nameCell.onclick = () => {
+                currentLibrarySubpath = currentLibrarySubpath ? `${currentLibrarySubpath}/${item.relative_path}` : item.relative_path;
+                fetchLibraryItems();
+            };
+        } else {
+            nameCell.innerHTML = `<span>${icon} ${escapeHtml(item.name)}</span>`;
+        }
+        tr.appendChild(nameCell);
+        
+        const statusCell = document.createElement('td');
+        statusCell.style.padding = '10px';
+        statusCell.innerHTML = `<span class="task-status-pill status-${item.status.replace('_', '-')}">${item.status}</span>`;
+        tr.appendChild(statusCell);
+        
+        const srcSizeCell = document.createElement('td');
+        srcSizeCell.style.padding = '10px';
+        srcSizeCell.textContent = item.source_size !== null ? `${(item.source_size / (1024*1024)).toFixed(2)} MB` : '--';
+        tr.appendChild(srcSizeCell);
+        
+        const bkSizeCell = document.createElement('td');
+        bkSizeCell.style.padding = '10px';
+        bkSizeCell.textContent = item.backup_size !== null ? `${(item.backup_size / (1024*1024)).toFixed(2)} MB` : '--';
+        tr.appendChild(bkSizeCell);
+        
+        const actionsCell = document.createElement('td');
+        actionsCell.style.padding = '10px';
+        actionsCell.style.textAlign = 'right';
+        
+        let actHtml = '<div style="display: flex; gap: 6px; justify-content: flex-end;">';
+        
+        if (!item.is_dir) {
+            const ext = item.name.split('.').pop().toLowerCase();
+            if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext)) {
+                actHtml += `<button class="btn btn-secondary btn-icon" onclick="openMediaInfoModal('${escapeHtml(item.relative_path)}')" title="Inspect & Convert">🎬</button>`;
+            }
+        }
+        
+        actHtml += `<button class="btn btn-secondary btn-icon" onclick="syncLibraryItem('${escapeHtml(item.relative_path)}', 'source_to_backup')" title="Sync to Backup">→</button>`;
+        actHtml += `<button class="btn btn-secondary btn-icon" onclick="syncLibraryItem('${escapeHtml(item.relative_path)}', 'backup_to_source')" title="Sync to Source">←</button>`;
+        actHtml += `<button class="btn btn-danger btn-icon" onclick="deleteLibraryItem('${escapeHtml(item.relative_path)}', '${item.name}')" title="Delete">🗑</button>`;
+        actHtml += '</div>';
+        
+        actionsCell.innerHTML = actHtml;
+        tr.appendChild(actionsCell);
+        
+        tbody.appendChild(tr);
+    });
+}
+
+async function triggerLibraryDeepScan() {
+    const btn = document.getElementById('btn-library-deep-scan');
+    btn.disabled = true;
+    btn.textContent = "Scanning...";
+    await fetchLibraryItems(true, true);
+    btn.disabled = false;
+    btn.textContent = "Deep Scan";
+}
+
+async function syncLibraryItem(relPath, direction) {
+    const fullRelPath = currentLibrarySubpath ? `${currentLibrarySubpath}/${relPath}` : relPath;
     try {
         const response = await fetch('/api/libraries/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 library_name: currentLibraryName,
-                relative_path: fullRelativePath,
+                relative_path: fullRelPath,
                 direction: direction
             })
         });
-        
+        const data = await response.json();
         if (response.ok) {
-            updateTaskTicker();
-            const actionText = direction === 'backup' ? 'Backup copy' : 'Restore download';
-            showTemporarySyncToast(`${actionText} task queued successfully in Queue runner.`);
+            showToast("Sync copy task queued.", "success");
+            fetchTasks();
         } else {
-            const err = await response.json();
-            alert(`Sync failed: ${err.detail}`);
+            showToast(`Sync failed: ${data.detail}`, "error");
         }
-    } catch (error) {
-        console.error("Error executing sync task:", error);
-    } finally {
-        hideLoading();
+    } catch (e) {
+        showToast("Failed to queue sync: " + e.message, "error");
     }
 }
 
-function showTemporarySyncToast(message) {
-    const toast = document.createElement('div');
-    toast.style.cssText = `
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        background: #25d366;
-        color: #fff;
-        padding: 12px 24px;
-        border-radius: 4px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        z-index: 100000;
-        font-weight: bold;
-        font-size: 0.9em;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    `;
-    toast.textContent = message;
-    document.body.appendChild(toast);
+async function deleteLibraryItem(relPath, name) {
+    const fullRelPath = currentLibrarySubpath ? `${currentLibrarySubpath}/${relPath}` : relPath;
+    const ok = await showAppConfirm(`Are you sure you want to delete "${name}" from this repository?`);
+    if (!ok) return;
     
-    setTimeout(() => {
-        toast.style.opacity = '1';
-    }, 50);
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => {
-            document.body.removeChild(toast);
-        }, 300);
-    }, 4000);
+    try {
+        const response = await fetch('/api/libraries/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                library_name: currentLibraryName,
+                relative_path: fullRelPath,
+                target: 'source'
+            })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            showToast("Deletion task queued.", "info");
+            fetchTasks();
+        } else {
+            showToast(`Deletion failed: ${data.detail}`, "error");
+        }
+    } catch (e) {
+        showToast("Failed to delete item: " + e.message, "error");
+    }
 }
 
-async function showMediaInfo(relativePath) {
-    const fullRelativePath = currentLibrarySubpath 
-        ? `${currentLibrarySubpath}/${relativePath}` 
-        : relativePath;
-        
-    showLoading();
+// --------------------------------------------------------------------------
+// MEDIA INFO & PIPELINE CONVERSION
+// --------------------------------------------------------------------------
+async function openMediaInfoModal(relativePath) {
+    const fullRelPath = currentLibrarySubpath ? `${currentLibrarySubpath}/${relativePath}` : relativePath;
+    showLoading(40);
     try {
         const response = await fetch('/api/libraries/media-info', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Pareo-Auth': localStorage.getItem('pareo_auth_token') || ''
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 library_name: currentLibraryName,
-                relative_path: fullRelativePath
+                relative_path: fullRelPath
             })
         });
         
         if (!response.ok) {
-            let errorMsg = response.statusText || 'Internal Server Error';
-            try {
-                const err = await response.json();
-                if (err && err.detail) {
-                    errorMsg = err.detail;
-                }
-            } catch (jsonErr) {
-                try {
-                    errorMsg = await response.text();
-                } catch (textErr) {}
-            }
-            console.error("Failed to fetch media details:", errorMsg);
-            alert(`Failed to fetch media details: ${errorMsg}`);
+            const err = await response.json();
+            showToast(`Media Info error: ${err.detail}`, 'error');
             return;
         }
         
         const details = await response.json();
-        
-        // Populate Title
         document.getElementById('media-info-title').textContent = `Media Info: ${details.filename}`;
         
-        // Populate Stream Information
         const detailsDiv = document.getElementById('media-info-details');
         detailsDiv.innerHTML = `
-            <div><strong>Format:</strong> ${details.format}</div>
-            <div><strong>Duration:</strong> ${details.duration}</div>
-            <div><strong>Size:</strong> ${details.size}</div>
-            <div><strong>Bitrate:</strong> ${details.bitrate}</div>
+            <div><strong>Format:</strong> ${escapeHtml(details.format)}</div>
+            <div><strong>Duration:</strong> ${escapeHtml(details.duration)}</div>
+            <div><strong>Size:</strong> ${escapeHtml(details.size)}</div>
+            <div><strong>Bitrate:</strong> ${escapeHtml(details.bitrate)}</div>
         `;
         
-        if (details.video && details.video.length > 0) {
-            details.video.forEach((v, index) => {
-                detailsDiv.innerHTML += `
-                    <div style="grid-column: 1 / -1; margin-top: 5px; color: #16a085; border-top: 1px solid #e9ecef; padding-top: 5px;">
-                        <strong>Video Stream #${index + 1}:</strong> ${v.codec} | ${v.resolution} | ${v.fps} fps
-                    </div>
-                `;
-            });
-        }
-        
-        if (details.audio && details.audio.length > 0) {
-            details.audio.forEach((a, index) => {
-                detailsDiv.innerHTML += `
-                    <div style="grid-column: 1 / -1; color: #d35400;">
-                        <strong>Audio Stream #${index + 1}:</strong> ${a.codec} | ${a.channels} ch | Lang: ${a.language}
-                    </div>
-                `;
-            });
-        }
-        
-        if (details.subtitle && details.subtitle.length > 0) {
+        (details.video || []).forEach((v, idx) => {
             detailsDiv.innerHTML += `
-                <div style="grid-column: 1 / -1; color: #7f8c8d; font-size: 0.95em;">
-                    <strong>Subtitles:</strong> ${details.subtitle.map(s => `${s.codec.toUpperCase()} (${s.language})`).join(', ')}
+                <div style="grid-column: 1 / -1; border-top: 1px solid var(--border-subtle); padding-top: 6px; color: var(--accent-primary);">
+                    <strong>Video #${idx+1}:</strong> ${v.codec} | ${v.resolution} | ${v.fps} fps
                 </div>
             `;
-        }
-        
-        // Populate Conversion Profiles
-        const configResponse = await fetch('/api/config/ffmpeg', {
-            headers: {
-                'X-Pareo-Auth': localStorage.getItem('pareo_auth_token') || ''
-            }
         });
         
-        const config = await configResponse.json();
-        const profiles = config.profiles || {};
+        (details.audio || []).forEach((a, idx) => {
+            detailsDiv.innerHTML += `
+                <div style="grid-column: 1 / -1; color: var(--accent-secondary);">
+                    <strong>Audio #${idx+1}:</strong> ${a.codec} | ${a.channels} ch | Lang: ${a.language}
+                </div>
+            `;
+        });
         
         const profilesDiv = document.getElementById('media-conversion-profiles');
         profilesDiv.innerHTML = '';
         
-        const fileExt = '.' + details.filename.split('.').pop().toLowerCase();
+        const configResp = await fetch('/api/config/ffmpeg');
+        const config = await configResp.json();
+        const profiles = config.profiles || {};
         
-        let hasProfiles = false;
-        
-        for (const [name, p] of Object.entries(profiles)) {
-            const allowed = p.allowed_extensions || [];
-            const isAllowed = allowed.length === 0 || allowed.includes(fileExt) || 
-                              (name.toLowerCase().includes('subtitle') && (fileExt === '.mkv' || fileExt === '.mp4')) ||
-                              (name.toLowerCase().includes('audio') && (fileExt === '.mkv' || fileExt === '.mp4' || fileExt === '.avi'));
-                              
-            if (isAllowed) {
-                hasProfiles = true;
-                const profileCard = document.createElement('div');
-                profileCard.style.cssText = `
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    background: #f8f9fa;
-                    padding: 12px 15px;
-                    border-radius: 4px;
-                    border: 1px solid #e9ecef;
-                    font-size: 0.9em;
-                `;
-                
-                profileCard.innerHTML = `
-                    <div style="flex-grow: 1; padding-right: 15px;">
-                        <div style="font-weight: bold; color: #2c3e50;">${name}</div>
-                        <div style="color: #666; font-size: 0.85em; font-family: monospace; word-break: break-all; margin-top: 3px;">${p.flags}</div>
-                    </div>
-                    <button class="btn btn-sm" onclick="startMediaConversion('${fullRelativePath.replace(/'/g, "\\'")}', '${name.replace(/'/g, "\\'")}')" style="background: #2980b9; color: #fff; border: none; font-weight: bold; padding: 6px 12px; cursor: pointer; border-radius: 4px; white-space: nowrap;">Convert</button>
-                `;
-                profilesDiv.appendChild(profileCard);
-            }
-        }
-        
-        if (!hasProfiles) {
-            profilesDiv.innerHTML = '<div style="color: #666; font-style: italic; font-size: 0.9em;">No matching conversion profiles available for this file type.</div>';
-        }
+        Object.entries(profiles).forEach(([pName, pData]) => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.style.cssText = "padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;";
+            card.innerHTML = `
+                <div>
+                    <strong style="color: var(--text-primary);">${escapeHtml(pName)}</strong>
+                    <div style="font-size: 0.8em; color: var(--text-muted); font-family: var(--font-family-mono);">${escapeHtml(pData.flags || '')}</div>
+                </div>
+                <button class="btn btn-primary btn-sm" onclick="startMediaConversion('${fullRelPath}', '${pName}')">Convert</button>
+            `;
+            profilesDiv.appendChild(card);
+        });
         
         document.getElementById('media-info-modal').style.display = 'flex';
-        
-    } catch (error) {
-        console.error("Error showing media info:", error);
+    } catch (e) {
+        showToast("Failed to fetch media details: " + e.message, 'error');
     } finally {
         hideLoading();
     }
@@ -2304,14 +1979,11 @@ function closeMediaInfoModal() {
 
 async function startMediaConversion(relativePath, profileName) {
     closeMediaInfoModal();
-    showLoading();
+    showLoading(40);
     try {
         const response = await fetch('/api/libraries/media-convert', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Pareo-Auth': localStorage.getItem('pareo_auth_token') || ''
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 library_name: currentLibraryName,
                 relative_path: relativePath,
@@ -2319,18 +1991,47 @@ async function startMediaConversion(relativePath, profileName) {
             })
         });
         
-        if (!response.ok) {
+        if (response.ok) {
+            showToast("Media conversion pipeline queued.", "success");
+            fetchTasks();
+            setTimeout(() => switchTab('tasks'), 400);
+        } else {
             const err = await response.json();
-            alert(`Failed to start media conversion: ${err.detail}`);
-            return;
+            showToast(`Conversion failed: ${err.detail}`, 'error');
         }
-        
-        const result = await response.json();
-        showTemporarySyncToast("Media conversion pipeline successfully started!");
-        
-    } catch (error) {
-        console.error("Error starting media conversion:", error);
+    } catch (e) {
+        showToast("Failed to start media conversion: " + e.message, 'error');
     } finally {
         hideLoading();
     }
 }
+
+// --------------------------------------------------------------------------
+// APPLICATION INITIALIZATION (FRICTIONLESS NO-AUTH)
+// --------------------------------------------------------------------------
+async function initApp() {
+    console.log("[Pareo V2] Booting application in frictionless no-auth mode...");
+    
+    // 1. Initialize Bespoke Theme Engine
+    initTheme();
+    
+    // 2. Connect Real-Time SSE Bus
+    initEventStream();
+    
+    // 3. Load Application Data
+    fetchTasks(0);
+    fetchProfiles();
+    fetchFsConfig();
+    fetchBookmarks();
+    fetchRemotesConfig();
+    fetchSwitchboardConfig();
+    fetchGenericCards();
+    fetchProcessConfig();
+    
+    // 4. Default to Tasks Tab
+    switchTab('tasks');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    initApp();
+});

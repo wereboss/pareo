@@ -1,12 +1,14 @@
 import os
 import glob
 import uuid
+import shlex
+import json
 from datetime import datetime
 from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
@@ -14,6 +16,19 @@ import executor
 import command_builder
 import database
 import process_manager
+from broadcaster import broadcaster
+
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_CONVERSION_TEMP = BASE_DIR / "conversion_temp"
+DEFAULT_CONVERSION_TEMP.mkdir(parents=True, exist_ok=True)
+
+def is_safe_path_string(p: str) -> bool:
+    """Guards polymorphic path strings against newlines, control chars, and length overflow."""
+    if not isinstance(p, str):
+        return False
+    if "\n" in p or "\r" in p or "\0" in p or len(p) >= 1024:
+        return False
+    return True
 
 def get_allowed_roots(remote_server: Optional[str] = None) -> List[str]:
     """Retrieves allowed root directories for path restriction from config.json."""
@@ -23,26 +38,35 @@ def get_allowed_roots(remote_server: Optional[str] = None) -> List[str]:
         if remote_server in remotes:
             return remotes[remote_server].get("allowed_roots", ["/Users/sri", "/Volumes"])
         return ["/Users/sri", "/Volumes"]
-    return config.get("allowed_roots", ["/home/sayang", "/Volumes"])
+    roots = list(config.get("allowed_roots", ["/home/sayang", "/Volumes"]))
+    if str(BASE_DIR) not in roots:
+        roots.append(str(BASE_DIR))
+    return roots
 
 def is_path_allowed(target_path: str, remote_server: Optional[str] = None) -> bool:
-    """Verifies if target_path falls strictly within allowed root folders."""
+    """Verifies if target_path falls strictly within allowed root folders with boundary checks."""
+    if not is_safe_path_string(target_path):
+        return False
+        
     allowed = get_allowed_roots(remote_server)
     try:
         normalized = os.path.normpath(target_path)
         # If it's local, resolve symlinks for extra security
         if not remote_server:
-            target = Path(target_path)
-            if target.exists():
-                resolved = target.resolve()
-            else:
-                parent = target
-                while not parent.exists():
-                    if parent.parent == parent:
-                        break
-                    parent = parent.parent
-                resolved = parent.resolve()
-            normalized = str(resolved)
+            try:
+                target = Path(target_path)
+                if target.exists():
+                    resolved = target.resolve()
+                else:
+                    parent = target
+                    while not parent.exists():
+                        if parent.parent == parent:
+                            break
+                        parent = parent.parent
+                    resolved = parent.resolve()
+                normalized = str(resolved)
+            except (OSError, ValueError):
+                return False
             
         for root in allowed:
             root_norm = os.path.normpath(root)
@@ -50,11 +74,32 @@ def is_path_allowed(target_path: str, remote_server: Optional[str] = None) -> bo
                 common = os.path.commonpath([root_norm, normalized])
                 if common == root_norm:
                     return True
-            except ValueError:
+            except (ValueError, OSError):
                 pass
     except Exception:
         pass
     return False
+
+async def run_async_subprocess(cmd_args: list, timeout: float = 15.0):
+    """Executes a subprocess asynchronously with explicit timeout and clean process group termination."""
+    proc = await asyncio.create_subprocess_exec(
+        *cmd_args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        return proc.returncode, stdout.decode('utf-8', errors='replace'), stderr.decode('utf-8', errors='replace')
+    except asyncio.TimeoutError:
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=2.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        raise HTTPException(status_code=504, detail="Subprocess timed out after 15 seconds.")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,15 +110,15 @@ async def lifespan(app: FastAPI):
     recovered_count = executor.recover_tasks()
     print(f"[*] Pareo Engine Boot: Recovered {recovered_count} pending tasks.")
     
-    # NEW: Start the parallel workers
+    # 3. Start parallel workers
     executor.start_workers()
 
-    print("--- TRUE ROUTING ORDER ---")
+    print("--- PAREO V2 ROUTING READY (PORT 9046) ---")
     for idx, route in enumerate(app.routes):
         route_type = "API Endpoint" if hasattr(route, "methods") else "CATCH-ALL MOUNT"
         path = getattr(route, "path", getattr(route, "name", "Unknown"))
         print(f"{idx} | {route_type} | {path}")
-    print("--------------------------")
+    print("------------------------------------------")
 
     yield
     # Cleanly stop workers on shutdown
@@ -81,83 +126,77 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Pareo API", lifespan=lifespan)
 
-# --- AUTHENTICATION SYSTEM ---
-import hashlib
-
+# --- AUTHENTICATION COMPATIBILITY (MVP 1: FRICTIONLESS NO-AUTH MODE) ---
 class PasswordAuthRequest(BaseModel):
     password: str
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    path = request.url.path
-    if not path.startswith("/api") or path in ("/api/auth/setup", "/api/auth/verify", "/api/auth/login"):
-        return await call_next(request)
-        
-    config = command_builder.load_config()
-    master_hash = config.get("master_password_hash")
-    
-    if not master_hash:
-        return await call_next(request)
-        
-    auth_header = request.headers.get("X-Pareo-Auth")
-    if not auth_header or auth_header != master_hash:
-        return JSONResponse(status_code=401, content={"detail": "Unauthorized: Invalid or missing X-Pareo-Auth header."})
-        
+    """MVP 1: Frictionless local network access - all endpoints pass through without header verification."""
     return await call_next(request)
 
 @app.get("/api/auth/verify")
 def verify_auth(request: Request):
-    """Checks the authentication status of the client session."""
-    config = command_builder.load_config()
-    master_hash = config.get("master_password_hash")
-    
-    if not master_hash:
-        return {"status": "setup_needed"}
-        
-    auth_header = request.headers.get("X-Pareo-Auth")
-    if auth_header == master_hash:
-        return {"status": "authorized"}
-        
-    return {"status": "unauthorized"}
+    """MVP 1 No-Auth mode: Always returns authorized."""
+    return {"status": "authorized", "mode": "no-auth"}
 
 @app.post("/api/auth/setup")
 def setup_password(req: PasswordAuthRequest):
-    """Saves the initial master password hash to config.json."""
-    config = command_builder.load_config()
-    if config.get("master_password_hash"):
-        raise HTTPException(status_code=400, detail="Master password is already configured.")
-        
-    password_hash = hash_password(req.password)
-    config["master_password_hash"] = password_hash
-    import json
-    with open('config.json', 'w') as f:
-        json.dump(config, f, indent=4)
-        
-    return {"message": "Master password successfully configured.", "token": password_hash}
+    """Compatibility endpoint for password setup."""
+    return {"status": "authorized", "mode": "no-auth", "token": "no-auth-token"}
 
 @app.post("/api/auth/login")
 def login_auth(req: PasswordAuthRequest):
-    """Verifies credentials and returns the authorization token."""
-    config = command_builder.load_config()
-    master_hash = config.get("master_password_hash")
-    
-    if not master_hash:
-        raise HTTPException(status_code=400, detail="Authentication is not configured yet.")
-        
-    password_hash = hash_password(req.password)
-    if password_hash == master_hash:
-        return {"status": "authorized", "token": password_hash}
-        
-    raise HTTPException(status_code=401, detail="Incorrect password.")
+    """Compatibility endpoint for user login."""
+    return {"status": "authorized", "mode": "no-auth", "token": "no-auth-token"}
 
+# --- REAL-TIME SERVER-SENT EVENTS (SSE) BUS ---
+@app.get("/api/stream/events")
+async def stream_events(request: Request):
+    """Server-Sent Events endpoint streaming live task status, logs, and queue counts."""
+    queue = await broadcaster.subscribe()
+    
+    async def event_generator():
+        # Yield initial connected event
+        yield f"event: connected\ndata: {json.dumps({'status': 'connected'})}\n\n"
+        
+        # Yield initial task counts
+        try:
+            counts = database.get_task_counts()
+            yield f"event: task_counts\ndata: {json.dumps(counts)}\n\n"
+        except Exception:
+            pass
+            
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    yield msg
+                except asyncio.TimeoutError:
+                    # 15s keepalive heartbeat ping
+                    yield ": ping\n\n"
+        except (asyncio.CancelledError, GeneratorExit, Exception):
+            pass
+        finally:
+            await broadcaster.unsubscribe(queue)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+# --- MODELS ---
 class GenericTaskRequest(BaseModel):
     card_name: str
     inputs: dict
 
-# 1. Unified Pydantic Model
 class FfmpegRequest(BaseModel):
     input_target: str
     output_target: str
@@ -169,8 +208,8 @@ class FsRequest(BaseModel):
     action: str
     source_paths: List[str]
     destination_path: Optional[str] = ""
-    remote_server: Optional[str] = ""  # NEW: Tracks the target server
-    source_server: Optional[str] = ""  # NEW: Tracks the source server
+    remote_server: Optional[str] = ""
+    source_server: Optional[str] = ""
 
 class SwitchboardRequest(BaseModel):
     category: str
@@ -181,13 +220,14 @@ class RenameRequest(BaseModel):
     new_name: str
     remote_server: Optional[str] = ""
 
+# --- CONFIG & EXECUTION ENDPOINTS ---
+
 @app.post("/api/execute/ls")
 async def execute_ls():
     """Queues the 'ls -ltr' command."""
     task_id = await executor.start_task("ls -ltr")
     return {"task_id": task_id, "message": "Command queued."}
 
-# 2. Rich Configuration Endpoint
 @app.get("/api/config/ffmpeg")
 def get_ffmpeg_config():
     """Serves the complete FFMPEG profile schema from config.json."""
@@ -195,74 +235,50 @@ def get_ffmpeg_config():
     profiles = config.get("ffmpeg", {}).get("profiles", {})
     return {"profiles": profiles}
 
-# 3. Unified Execution Engine
 @app.post("/api/execute/ffmpeg")
 async def execute_ffmpeg(request: FfmpegRequest):
-    """Handles both single and batch FFMPEG executions with strict config validation."""
-    config = command_builder.load_config()
-    profiles = config.get("ffmpeg", {}).get("profiles", {})
-    
-    if request.profile not in profiles:
-        raise HTTPException(status_code=400, detail="Invalid profile selected.")
+    """Builds and queues one or multiple FFMPEG jobs."""
+    if not is_path_allowed(request.input_target) or not is_path_allowed(request.output_target):
+        raise HTTPException(status_code=403, detail="Access denied: Paths must reside within allowed root directories.")
         
-    profile_data = profiles[request.profile]
-    
-    # Path Validation
-    if not is_path_allowed(request.output_target):
-        raise HTTPException(status_code=403, detail="Access denied: Output path is outside allowed directories.")
-    input_prefix = request.input_target.split('*')[0]
-    if not is_path_allowed(input_prefix):
-        raise HTTPException(status_code=403, detail="Access denied: Input path is outside allowed directories.")
-
-    queued_count = 0
+    tasks = []
     
     if request.mode == "single":
-        # Route: Single Execution
         command = command_builder.build_ffmpeg_command(
             request.input_target, 
             request.output_target, 
             request.profile
         )
-        # CRITICAL FIX: Route to 'media' queue
-        await executor.start_task(command, queue_name="media")
-        queued_count = 1
+        task_id = await executor.start_task(command, queue_name="media")
+        tasks.append(task_id)
         
     elif request.mode == "batch":
-        # Route: Batch Execution
-        ext = request.output_extension if request.output_extension.startswith('.') else f".{request.output_extension}"
-        allowed_exts = profile_data.get("allowed_extensions", [])
+        src_path = Path(request.input_target)
+        dest_path = Path(request.output_target)
         
-        # Validation 2: Check if the output extension is allowed by the config
-        if allowed_exts and ext not in allowed_exts:
-             raise HTTPException(status_code=400, detail=f"Extension '{ext}' not allowed for profile '{request.profile}'.")
-             
-        files = glob.glob(request.input_target)
+        if not src_path.is_dir() or not dest_path.is_dir():
+            raise HTTPException(status_code=400, detail="Batch mode requires both Input and Output targets to be directories.")
+            
+        extensions = ('*.mp4', '*.mkv', '*.avi', '*.mov', '*.flv', '*.ts')
+        files = []
+        for ext in extensions:
+            files.extend(src_path.glob(ext))
+            
         if not files:
-            return {"message": "No files found matching the pattern.", "queued_count": 0}
+            raise HTTPException(status_code=404, detail="No matching media files found in the source directory.")
             
-        # Ensure the destination folder exists
-        os.makedirs(request.output_target, exist_ok=True)
-        
-        # Unpack the wildcard and queue individual commands
-        for file_path in files:
-            if not os.path.isfile(file_path):
-                continue
-                
-            filename_without_ext = Path(file_path).stem
-            output_file_path = os.path.join(request.output_target, f"{filename_without_ext}{ext}")
-            
-            command = command_builder.build_ffmpeg_command(file_path, output_file_path, request.profile)
-            # CRITICAL FIX: Route to 'media' queue
-            await executor.start_task(command, queue_name="media")
-            queued_count += 1
-            
-    return {"message": f"Successfully queued {queued_count} task(s).", "queued_count": queued_count}
+        for file in sorted(files):
+            out_filename = f"{file.stem}{request.output_extension}"
+            out_file = dest_path / out_filename
+            command = command_builder.build_ffmpeg_command(str(file), str(out_file), request.profile)
+            task_id = await executor.start_task(command, queue_name="media")
+            tasks.append(task_id)
 
-# --- FILE SYSTEM ENDPOINTS ---
+    return {"message": f"Successfully queued {len(tasks)} FFMPEG task(s).", "tasks": tasks}
 
 @app.get("/api/config/fs")
 def get_fs_config():
-    """Serves the File Operations config schema."""
+    """Serves the file operations configuration."""
     config = command_builder.load_config()
     return config.get("file_operations", {})
 
@@ -278,9 +294,9 @@ def get_remotes_config():
     config = command_builder.load_config()
     return config.get("remote_servers", {})
 
-def list_remote_directory(remote_name: str, target_path: str):
-    import subprocess
-    import json
+# --- ASYNC REMOTE FS HANDLERS ---
+
+async def list_remote_directory(remote_name: str, target_path: str):
     config = command_builder.load_config()
     remotes = config.get("remote_servers", {})
     if remote_name not in remotes:
@@ -293,7 +309,6 @@ def list_remote_directory(remote_name: str, target_path: str):
     allowed_roots = rc.get("allowed_roots", ["/Users/sri", "/Volumes"])
     allowed_roots_json = json.dumps(allowed_roots)
     
-    # Python one-liner to execute on the remote machine
     remote_python_code = (
         "import os, json, sys, pathlib\n"
         "target = sys.argv[1] if len(sys.argv) > 1 else '/'\n"
@@ -347,26 +362,23 @@ def list_remote_directory(remote_name: str, target_path: str):
     ]
     
     try:
-        proc = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10.0)
-        if proc.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"SSH command failed: {proc.stderr}")
+        retcode, stdout, stderr = await run_async_subprocess(ssh_cmd, timeout=15.0)
+        if retcode != 0:
+            raise HTTPException(status_code=500, detail=f"SSH command failed: {stderr}")
             
-        result = json.loads(proc.stdout.strip())
+        result = json.loads(stdout.strip())
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Unknown remote error"))
             
         return result
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Connection to remote server timed out.")
+    except HTTPException:
+        raise
     except json.JSONDecodeError:
-        raise HTTPException(status_code=500, detail=f"Invalid response from remote server: {proc.stdout} {proc.stderr}")
+        raise HTTPException(status_code=500, detail=f"Invalid response from remote server: {stdout} {stderr}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-def rename_remote_item(remote_name: str, source_path: str, new_name: str):
-    import subprocess
-    import json
+async def rename_remote_item(remote_name: str, source_path: str, new_name: str):
     config = command_builder.load_config()
     remotes = config.get("remote_servers", {})
     if remote_name not in remotes:
@@ -431,38 +443,36 @@ def rename_remote_item(remote_name: str, source_path: str, new_name: str):
     ]
     
     try:
-        proc = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10.0)
-        output = proc.stdout.strip()
+        retcode, stdout, stderr = await run_async_subprocess(ssh_cmd, timeout=15.0)
+        output = stdout.strip()
         
-        if proc.returncode == 1:
+        if retcode == 1:
             raise HTTPException(status_code=404, detail="Source file or folder not found on remote server.")
-        elif proc.returncode == 2:
+        elif retcode == 2:
             raise HTTPException(status_code=400, detail="A file or folder with the new name already exists on remote server.")
-        elif proc.returncode in (4, 5):
+        elif retcode in (4, 5):
             raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed directories.")
-        elif proc.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to rename on remote: {output} {proc.stderr}")
+        elif retcode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to rename on remote: {output} {stderr}")
             
         return {"success": True, "message": f"Renamed remote item to {new_name}"}
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Connection to remote server timed out.")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @app.get("/api/fs/list")
-def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
+async def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
     """Returns a JSON array of files and folders for the Explorer Modal."""
     allowed = get_allowed_roots(remote_server)
     if not allowed:
         raise HTTPException(status_code=500, detail="Allowed roots not configured.")
         
-    # If client requests root or empty or not allowed, redirect to the first allowed root
     if target_path == "/" or not target_path or not is_path_allowed(target_path, remote_server):
         target_path = allowed[0]
         
     if remote_server:
-        return list_remote_directory(remote_server, target_path)
+        return await list_remote_directory(remote_server, target_path)
         
     try:
         p = Path(target_path)
@@ -479,9 +489,8 @@ def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
                     "size": child.stat().st_size if child.is_file() else 0
                 })
             except PermissionError:
-                pass # Gracefully skip files Pareo doesn't have read access to
+                pass
                 
-        # Sort folders first, then alphabetically
         items.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
         parent_path = str(p.parent.absolute()) if p.parent != p else None
         return {
@@ -489,14 +498,16 @@ def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
             "parent_path": parent_path,
             "items": items
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/fs/rename")
-def rename_fs_item(request: RenameRequest):
-    """Renames a file or folder immediately using local or remote os.rename."""
+async def rename_fs_item(request: RenameRequest):
+    """Renames a file or folder immediately using local or remote execution."""
     if request.remote_server:
-        return rename_remote_item(request.remote_server, request.source_path, request.new_name)
+        return await rename_remote_item(request.remote_server, request.source_path, request.new_name)
         
     src = Path(request.source_path)
     dest = src.parent / request.new_name
@@ -518,406 +529,253 @@ def rename_fs_item(request: RenameRequest):
 
 @app.post("/api/execute/fs")
 async def execute_fs_action(request: FsRequest):
-    """Executes local or remote file operations."""
+    """Queues one or multiple file system operations."""
     config = command_builder.load_config()
-    fs_config = config.get("file_operations", {}).get("actions", {})
-    remotes_config = config.get("remote_servers", {})
+    actions = config.get("file_operations", {}).get("actions", {})
+    remotes = config.get("remote_servers", {})
     
-    if request.action not in fs_config:
-        raise HTTPException(status_code=400, detail="Invalid action selected.")
+    action_data = actions.get(request.action)
+    if not action_data:
+        raise HTTPException(status_code=400, detail=f"Unknown file operation: {request.action}")
         
-    action_data = fs_config[request.action]
-    remote_creds = None
+    requires_remote = action_data.get("requires_remote", False)
+    remote_config = remotes.get(request.remote_server) if (requires_remote and request.remote_server) else None
     
-    # Validation 1: Require Destination
-    if action_data.get("requires_destination") and not request.destination_path:
-        raise HTTPException(status_code=400, detail=f"Action '{request.action}' requires a destination path.")
-        
-    # Validation 2: Require Remote Server (for local-to-remote actions)
-    if action_data.get("requires_remote") and not request.source_server:
-        if not request.remote_server or request.remote_server not in remotes_config:
-            raise HTTPException(status_code=400, detail="A valid Remote Server must be selected for this action.")
-        remote_creds = remotes_config[request.remote_server]
-        
-    # Path Validation
-    if request.destination_path:
-        dest_server = None
-        if action_data.get("requires_remote") and request.remote_server:
-            dest_server = request.remote_server
-        elif request.source_server and not action_data.get("requires_remote"):
-            dest_server = request.source_server
-            
-        if not is_path_allowed(request.destination_path, dest_server):
-            raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed directories.")
-            
-    src_server = request.source_server if request.source_server else None
+    if requires_remote and not remote_config:
+        raise HTTPException(status_code=400, detail=f"Action '{request.action}' requires a valid remote server.")
+
     for src in request.source_paths:
-        if not is_path_allowed(src, src_server):
-            raise HTTPException(status_code=403, detail="Access denied: Source path is outside allowed directories.")
+        if not is_path_allowed(src, request.source_server or None):
+            raise HTTPException(status_code=403, detail=f"Access denied for source path: {src}")
+            
+    if action_data.get("requires_dest"):
+        if not request.destination_path:
+            raise HTTPException(status_code=400, detail=f"Action '{request.action}' requires a destination path.")
+        if not is_path_allowed(request.destination_path, request.remote_server or None):
+            raise HTTPException(status_code=403, detail="Access denied for destination path.")
 
-    queued_count = 0
+    tasks = []
     for src in request.source_paths:
-        if request.source_server:
-            # We are performing actions on a remote filesystem context
-            if request.source_server not in remotes_config:
-                raise HTTPException(status_code=400, detail=f"Source remote server '{request.source_server}' not configured.")
-            
-            src_creds = remotes_config[request.source_server]
-            user = src_creds.get("user")
-            host = src_creds.get("host")
-            key_path = src_creds.get("key_path")
-            
-            if action_data.get("requires_remote"):
-                # Remote action: Pulling file from remote source to local destination
-                if request.action == "Remote Copy (SCP)":
-                    cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src}" "{request.destination_path}"'
-                elif request.action == "Remote Move (SCP)":
-                    cmd = f'scp -o StrictHostKeyChecking=no -i "{key_path}" -r {user}@{host}:"{src}" "{request.destination_path}" && ssh -o StrictHostKeyChecking=no -i "{key_path}" {user}@{host} "rm -rf \\"{src}\\""'
-                else:
-                    cmd = command_builder.build_fs_command(request.action, src, request.destination_path, src_creds)
-            else:
-                # Standard local-style action on remote machine: execute it over SSH
-                local_cmd = command_builder.build_fs_command(request.action, src, request.destination_path, None)
-                escaped_cmd = local_cmd.replace('\\', '\\\\').replace('"', '\\"')
-                cmd = f'ssh -o StrictHostKeyChecking=no -i "{key_path}" {user}@{host} "{escaped_cmd}"'
-        else:
-            # Local source context
-            cmd = command_builder.build_fs_command(
-                request.action, 
-                src, 
-                request.destination_path, 
-                remote_creds
-            )
-            
-        # Route to 'fs' queue
-        await executor.start_task(cmd, queue_name="fs")
-        queued_count += 1
+        command = command_builder.build_fs_command(
+            request.action,
+            src,
+            request.destination_path,
+            remote_config
+        )
+        task_id = await executor.start_task(command, queue_name="fs")
+        tasks.append(task_id)
         
-    return {"message": f"Successfully queued {queued_count} file operations.", "queued_count": queued_count}
+    return {"message": f"Successfully queued {len(tasks)} file operation(s).", "tasks": tasks}
 
+# --- SWITCHBOARD & GENERIC TASKS ---
+@app.get("/api/config/switchboard")
+def get_switchboard_config():
+    """Serves the dynamic switchboard layout."""
+    config = command_builder.load_config()
+    return config.get("switchboard", {})
 
-@app.get("/api/tasks")
-def get_tasks(
-    limit: Optional[int] = 15, 
-    offset: Optional[int] = 0,
-    queue: Optional[str] = None,
-    status: Optional[str] = None,
-    command: Optional[str] = None
-):
-    """Retrieves historical tasks from SQLite with pagination (excluding large output logs) and optional filters."""
-    # Clean empty strings into None
-    q = queue if queue else None
-    s = status if status else None
-    c = command if command else None
-    return database.get_tasks_paginated(limit=limit, offset=offset, queue=q, status=s, command=c)
+@app.post("/api/execute/switchboard")
+async def execute_switchboard(request: SwitchboardRequest):
+    """Dispatches a switchboard action based on its configuration."""
+    config = command_builder.load_config()
+    switchboard = config.get("switchboard", {})
+    category_buttons = switchboard.get(request.category, {}).get("buttons", {})
+    
+    button_data = category_buttons.get(request.button_name)
+    if not button_data:
+        raise HTTPException(status_code=400, detail=f"Button '{request.button_name}' not found.")
+        
+    command = button_data.get("command")
+    execution_type = button_data.get("type", "queue")
+    
+    if not command:
+        raise HTTPException(status_code=400, detail="No command associated with this action.")
 
+    if execution_type == "immediate":
+        res = await executor.fire_immediate_command(command, detached=False)
+        return {
+            "type": "immediate",
+            "success": res["success"],
+            "output": res["output"]
+        }
+    elif execution_type == "detached":
+        res = await executor.fire_immediate_command(command, detached=True)
+        return {
+            "type": "detached",
+            "success": res["success"],
+            "output": res["output"]
+        }
+    else:
+        q_name = executor.resolve_queue_from_command(command)
+        task_id = await executor.start_task(command, queue_name=q_name)
+        return {
+            "type": "queue",
+            "task_id": task_id,
+            "message": f"Task successfully queued in '{q_name.upper()}'."
+        }
+
+@app.get("/api/config/cards")
+def get_generic_cards_config():
+    """Serves custom form definitions from config.json."""
+    config = command_builder.load_config()
+    return config.get("cards", {})
+
+@app.post("/api/execute/generic")
+async def execute_generic_card(request: GenericTaskRequest):
+    """Parses inputs and pushes the resolved command to the background executor."""
+    config = command_builder.load_config()
+    cards = config.get("cards", {})
+    
+    card_data = cards.get(request.card_name)
+    if not card_data:
+        raise HTTPException(status_code=400, detail=f"Card '{request.card_name}' does not exist.")
+        
+    template = card_data.get("command_template", "")
+    for field in card_data.get("fields", []):
+        name = field["name"]
+        val = request.inputs.get(name, field.get("default", ""))
+        
+        if field.get("type") == "path":
+            if not is_path_allowed(str(val)):
+                raise HTTPException(status_code=403, detail=f"Access denied for path field '{name}'.")
+                
+        template = template.replace(f"{{{name}}}", str(val))
+        
+    q_name = card_data.get("queue", executor.resolve_queue_from_command(template))
+    task_id = await executor.start_task(template, queue_name=q_name)
+    return {"message": f"Task queued successfully in {q_name.upper()}.", "task_id": task_id}
+
+# --- PROCESS SUPERVISION ---
+@app.get("/api/config/processes")
+def get_processes_config():
+    """Serves the processes configuration from config.json."""
+    config = command_builder.load_config()
+    return config.get("processes", {})
+
+@app.get("/api/processes/status")
+async def get_all_process_statuses():
+    """Returns dynamic status checks for all configured processes."""
+    statuses = await process_manager.get_all_process_statuses()
+    return statuses
+
+@app.post("/api/processes/{name}/start")
+async def start_process_endpoint(name: str):
+    """Spawns the target process daemon."""
+    res = await process_manager.start_process(name)
+    if not res["success"]:
+        raise HTTPException(status_code=500, detail=res["message"])
+    return res
+
+@app.post("/api/processes/{name}/stop")
+async def stop_process_endpoint(name: str):
+    """Halts the target process daemon."""
+    res = await process_manager.stop_process(name)
+    if not res["success"]:
+        raise HTTPException(status_code=500, detail=res["message"])
+    return res
+
+@app.get("/api/processes/{name}/logs")
+def get_process_logs_endpoint(name: str, lines: int = 200):
+    """Fetches real-time log output for a daemon process."""
+    logs = process_manager.get_process_logs(name, lines=lines)
+    return {"name": name, "logs": logs}
+
+# --- TASK QUERIES & LIFECYCLE ---
 @app.get("/api/tasks/counts")
 def get_task_counts():
-    """Serves real-time ongoing and pending task counts for the header ticker."""
+    """Returns exact counts of ongoing and pending tasks."""
     return database.get_task_counts()
 
+@app.get("/api/tasks")
+def get_tasks(limit: int = 15, offset: int = 0, queue: str = None, status: str = None, command: str = None):
+    """Retrieves paginated historical tasks metadata."""
+    return database.get_tasks_paginated(limit=limit, offset=offset, queue=queue, status=status, command=command)
+
 @app.get("/api/tasks/{task_id}")
-def get_single_task(task_id: str):
-    """Retrieves high-speed streaming data from SQLite."""
+def get_task_details(task_id: str):
+    """Retrieves full details and complete terminal output for a task."""
     task = database.get_task(task_id)
-    if task:
-        return task
-    return {"error": "Task not found"}
-
-
-@app.post("/api/tasks/{task_id}/retry")
-async def retry_task_endpoint(task_id: str):
-    """Resets a failed task and pushes it back into the queue."""
-    try:
-        await executor.retry_task(task_id)
-        return {"message": "Task re-queued successfully."}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))   
-
+    if not task:
+        return {"error": "Task not found."}
+    return task
 
 @app.post("/api/tasks/{task_id}/cancel")
 async def cancel_task_endpoint(task_id: str):
-    """Cancels a running or pending task."""
+    """Terminates an ongoing task or removes it from queue."""
     try:
         await executor.cancel_task(task_id)
         return {"message": "Task cancelled successfully."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/tasks/{task_id}/retry")
+async def retry_task_endpoint(task_id: str):
+    """Requeues a failed or cancelled task."""
+    try:
+        await executor.retry_task(task_id)
+        return {"message": "Task requeued successfully."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/tasks/purge")
-def purge_tasks_endpoint(age: str):
-    """Purges completed, failed, or cancelled tasks older than the specified age."""
-    if age not in ['1d', '1w', '2w', 'all']:
-        raise HTTPException(status_code=400, detail="Invalid age threshold. Must be '1d', '1w', '2w', or 'all'.")
+def purge_tasks_endpoint(age: str = "1w"):
+    """Prunes historical completed/failed tasks from SQLite."""
     try:
-        deleted_count = database.purge_tasks(age)
-        return {"message": f"Successfully purged {deleted_count} task(s).", "count": deleted_count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        deleted = database.purge_tasks(age)
+        return {"message": f"Successfully purged {deleted} tasks."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-
-@app.get("/api/config/switchboard")
-def get_switchboard_config():
-    """Serves the Switchboard layout structure."""
-    config = command_builder.load_config()
-    return config.get("switchboard", {})
-
-@app.post("/api/execute/switchboard")
-async def execute_switchboard(request: SwitchboardRequest):
-    """Fires a fire-and-forget switchboard command (Standard or Detached)."""
-    config = command_builder.load_config()
-    switchboard = config.get("switchboard", {})
-    
-    if request.category not in switchboard or request.button_name not in switchboard[request.category]:
-        raise HTTPException(status_code=400, detail="Switchboard button not found in configuration.")
-        
-    cmd_data = switchboard[request.category][request.button_name]
-    
-    # Check if the config is a dict (new detached schema) or string (legacy)
-    if isinstance(cmd_data, dict):
-        command = cmd_data.get("command", "")
-        detached = cmd_data.get("detached", False)
-    else:
-        command = cmd_data
-        detached = False
-    
-    # Execute
-    result = await executor.fire_immediate_command(command, detached=detached)
-    
-    if not result["success"]:
-        raise HTTPException(status_code=500, detail=result["output"])
-        
-    return {"message": result["output"]}
-
-@app.get("/api/config/generic_cards")
-def get_generic_cards():
-    """Serves the generic card layouts to the frontend."""
-    config = command_builder.load_config()
-    return config.get("generic_cards", {})
-
-def _clean_shell_url(url_str: str) -> str:
-    cleaned = str(url_str).replace('"', '').replace("'", "")
-    return f"'{cleaned}'"
-
-@app.post("/api/execute/generic")
-async def execute_generic(request: GenericTaskRequest):
-    """Parses dynamic inputs into a template and queues the task(s)."""
-    import re
-    config = command_builder.load_config()
-    cards = config.get("generic_cards", {})
-    
-    if request.card_name not in cards:
-        raise HTTPException(status_code=404, detail="Generic card configuration not found.")
-        
-    card_config = cards[request.card_name]
-    
-    # Path validation for generic card inputs
-    inputs_schema = card_config.get("inputs", [])
-    for inp in inputs_schema:
-        inp_id = inp.get("id")
-        inp_type = inp.get("type")
-        if inp_type in ("directory", "file") and inp_id in request.inputs:
-            val = str(request.inputs[inp_id])
-            if not is_path_allowed(val):
-                raise HTTPException(status_code=403, detail=f"Access denied: Input '{inp_id}' path is outside allowed directories.")
-
-    template = card_config.get("command_template", "")
-    queue_name = card_config.get("task_type", "default")
-    batch_size = card_config.get("batch_size")
-    
-    # Check if we have a multi-link input (e.g. 'url' or similar list field)
-    urls_input = request.inputs.get("url", "")
-    urls_list = []
-    if urls_input:
-        # Split by newlines, spaces, or commas
-        items = re.split(r'[\r\n,\s]+', str(urls_input).strip())
-        urls_list = [item.strip() for item in items if item.strip()]
-        
-    if batch_size or len(urls_list) > 1:
-        if not urls_list:
-            raise HTTPException(status_code=400, detail="No valid URLs or links provided.")
-            
-        bs = int(batch_size) if batch_size else 5
-        url_batches = [urls_list[i:i + bs] for i in range(0, len(urls_list), bs)]
-        
-        queued_tasks = []
-        for batch in url_batches:
-            # Single-quote each URL safely for shell command execution
-            batch_url_str = " ".join(_clean_shell_url(u) for u in batch)
-            
-            cmd = template
-            for key, value in request.inputs.items():
-                if key == "url":
-                    cmd = cmd.replace("{url}", batch_url_str)
-                else:
-                    cmd = cmd.replace(f"{{{key}}}", str(value))
-                    
-            task_id = await executor.start_task(cmd, queue_name=queue_name)
-            queued_tasks.append(task_id)
-            
-        return {
-            "message": f"Successfully queued {len(queued_tasks)} task(s) ({len(urls_list)} links total).",
-            "queued_count": len(queued_tasks),
-            "queue": queue_name
-        }
-    else:
-        # Single execution fallback
-        command = template
-        for key, value in request.inputs.items():
-            if key == "url" and urls_list:
-                single_url_str = _clean_shell_url(urls_list[0])
-                command = command.replace("{url}", single_url_str)
-            else:
-                command = command.replace(f"{{{key}}}", str(value))
-                
-        task_id = await executor.start_task(command, queue_name=queue_name)
-        return {
-            "message": "Task generated and queued.", 
-            "task_id": task_id, 
-            "queue": queue_name,
-            "final_command": command
-        }
-
-class ProcessActionRequest(BaseModel):
-    name: str
-
-class ProcessStopRequest(BaseModel):
-    name: str
-    force: Optional[bool] = False
-
-@app.get("/api/config/processes")
-def get_processes_config():
-    """Serves the processes configuration schema."""
-    config = command_builder.load_config()
-    return config.get("process_monitors", {})
-
-@app.get("/api/processes/status")
-async def get_all_processes_status():
-    """Retrieves current status for all configured server processes in parallel."""
-    config = command_builder.load_config()
-    monitors = config.get("process_monitors", {})
-    names = list(monitors.keys())
-    tasks = [process_manager.get_process_status(name, monitors[name]) for name in names]
-    results = await asyncio.gather(*tasks)
-    return {name: res for name, res in zip(names, results)}
-
-@app.post("/api/processes/start")
-async def start_monitored_process(request: ProcessActionRequest):
-    """Spawns a configured process group in the background."""
-    config = command_builder.load_config()
-    monitors = config.get("process_monitors", {})
-    if request.name not in monitors:
-        raise HTTPException(status_code=404, detail="Process configuration not found.")
-    
-    res = await process_manager.start_process(request.name, monitors[request.name])
-    if not res["success"]:
-        raise HTTPException(status_code=400, detail=res["message"])
-    return res
-
-@app.post("/api/processes/stop")
-async def stop_monitored_process(request: ProcessStopRequest):
-    """Stops or force-kills a running process group."""
-    config = command_builder.load_config()
-    monitors = config.get("process_monitors", {})
-    if request.name not in monitors:
-        raise HTTPException(status_code=404, detail="Process configuration not found.")
-    
-    res = await process_manager.stop_process(request.name, monitors[request.name], force=request.force)
-    if not res["success"]:
-        raise HTTPException(status_code=400, detail=res["message"])
-    return res
-
-@app.get("/api/processes/logs")
-def get_monitored_process_logs(name: str, lines: Optional[int] = 100):
-    """Returns the tail end of the log file for the specified process."""
-    config = command_builder.load_config()
-    monitors = config.get("process_monitors", {})
-    if name not in monitors:
-        raise HTTPException(status_code=404, detail="Process configuration not found.")
-    
-    log_file = monitors[name].get("log_file")
-    if not log_file:
-        raise HTTPException(status_code=400, detail="No log file configured for this process.")
-    
-    content = process_manager.read_last_lines(log_file, lines)
-    return {"name": name, "logs": content}
-
-
-# --- FOLDER LIBRARIES SYSTEM ---
-
-class LibrarySyncRequest(BaseModel):
-    library_name: str
-    relative_path: str
-    direction: str # "backup" or "restore" or "both"
-
-class MediaInfoRequest(BaseModel):
-    library_name: str
-    relative_path: str
-
-class MediaConvertRequest(BaseModel):
-    library_name: str
-    relative_path: str
-    profile_name: str
+# --- FOLDER LIBRARIES & MEDIA CONVERSION PIPELINE ---
 
 def get_local_library_metadata(base_path: str, subpath: str, deep_scan: bool = False) -> dict:
-    import os
-    from pathlib import Path
-    target_path = Path(base_path) / subpath
-    try:
-        target_path = target_path.resolve()
-    except Exception:
-        pass
-    
-    if not is_path_allowed(str(target_path), None):
-        raise Exception(f"Access denied: Path '{target_path}' is outside allowed directories.")
-        
-    if not target_path.exists() or not target_path.is_dir():
+    """Scans local folder directory structure and computes metadata."""
+    target_path = os.path.join(base_path, subpath)
+    p = Path(target_path)
+    if not p.exists() or not p.is_dir():
         return {}
         
     result = {}
     if deep_scan:
-        for root, dirs, files in os.walk(str(target_path)):
+        for root, dirs, files in os.walk(str(p.resolve())):
             for name in dirs + files:
-                full_path = Path(root) / name
                 try:
-                    full_resolved = full_path.resolve()
-                    target_resolved = target_path.resolve()
-                    rel_path = full_resolved.relative_to(target_resolved).as_posix()
-                    is_dir = full_path.is_dir()
-                    stat = full_path.stat()
-                    size = stat.st_size if not is_dir else 0
-                    mtime = stat.st_mtime
-                    result[rel_path] = {
+                    full = os.path.join(root, name)
+                    rel = os.path.relpath(full, str(p.resolve()))
+                    is_d = os.path.isdir(full)
+                    st = os.stat(full)
+                    size = st.st_size if not is_d else 0
+                    mtime = st.st_mtime
+                    result[rel] = {
                         "name": name,
-                        "is_dir": is_dir,
+                        "is_dir": is_d,
                         "size": size,
                         "mtime": mtime,
-                        "path": str(full_path.absolute())
+                        "path": full
                     }
                 except Exception:
                     pass
     else:
-        for entry in os.scandir(str(target_path)):
-            try:
-                is_dir = entry.is_dir()
-                stat = entry.stat()
-                size = stat.st_size if not is_dir else 0
-                mtime = stat.st_mtime
-                result[entry.name] = {
-                    "name": entry.name,
-                    "is_dir": is_dir,
-                    "size": size,
-                    "mtime": mtime,
-                    "path": entry.path
-                }
-            except Exception:
-                pass
+        with os.scandir(str(p.resolve())) as it:
+            for entry in it:
+                try:
+                    is_d = entry.is_dir()
+                    st = entry.stat()
+                    size = st.st_size if not is_d else 0
+                    mtime = st.st_mtime
+                    result[entry.name] = {
+                        "name": entry.name,
+                        "is_dir": is_d,
+                        "size": size,
+                        "mtime": mtime,
+                        "path": entry.path
+                    }
+                except Exception:
+                    pass
     return result
 
-def get_remote_library_metadata(remote_server: str, base_path: str, subpath: str, deep_scan: bool = False) -> dict:
-    import subprocess
-    import json
+async def get_remote_library_metadata(remote_server: str, base_path: str, subpath: str, deep_scan: bool = False) -> dict:
+    """Scans remote directory asynchronously over SSH with 15s timeout."""
     config = command_builder.load_config()
     remotes = config.get("remote_servers", {})
     if remote_server not in remotes:
@@ -967,17 +825,11 @@ def get_remote_library_metadata(remote_server: str, base_path: str, subpath: str
         "            for name in dirs + files:\n"
         "                try:\n"
         "                    full = os.path.join(root, name)\n"
-        "                    full_resolved = pathlib.Path(full).resolve()\n"
-        "                    target_resolved = pathlib.Path(abs_target).resolve()\n"
-        "                    rel = str(full_resolved.relative_to(target_resolved).as_posix())\n"
+        "                    rel = os.path.relpath(full, abs_target)\n"
         "                    is_d = os.path.isdir(full)\n"
-        "                    try:\n"
-        "                        st = os.stat(full)\n"
-        "                        size = st.st_size if not is_d else 0\n"
-        "                        mtime = st.st_mtime\n"
-        "                    except Exception:\n"
-        "                        size = 0\n"
-        "                        mtime = 0\n"
+        "                    st = os.stat(full)\n"
+        "                    size = st.st_size if not is_d else 0\n"
+        "                    mtime = st.st_mtime\n"
         "                    result[rel] = {'name': name, 'is_dir': is_d, 'size': size, 'mtime': mtime, 'path': full}\n"
         "                except Exception:\n"
         "                    pass\n"
@@ -1006,11 +858,11 @@ def get_remote_library_metadata(remote_server: str, base_path: str, subpath: str
         f"env PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/sbin\" python3 -c \"{escaped_code}\" \"{base_path}\" \"{subpath}\" '{allowed_roots_json}' '{str(deep_scan)}'"
     ]
     
-    proc = subprocess.run(ssh_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20.0)
-    if proc.returncode != 0:
-        raise Exception(f"SSH command failed: {proc.stderr}")
+    retcode, stdout, stderr = await run_async_subprocess(ssh_cmd, timeout=15.0)
+    if retcode != 0:
+        raise Exception(f"SSH command failed: {stderr}")
         
-    res = json.loads(proc.stdout.strip())
+    res = json.loads(stdout.strip())
     if not res.get("success"):
         raise Exception(res.get("error", "Unknown remote error"))
         
@@ -1029,7 +881,7 @@ def get_library_union(source_meta: dict, backup_meta: dict) -> list:
         
         if src and not bk:
             status = "only_source"
-        elif bk and not src:
+        elif not src and bk:
             status = "only_backup"
         else:
             if is_dir:
@@ -1065,8 +917,8 @@ def list_libraries():
     return config.get("libraries", {})
 
 @app.get("/api/libraries/browse")
-def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False, nocache: bool = False):
-    """Gathers sync comparison for a library's source and backup folders."""
+async def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False, nocache: bool = False):
+    """Gathers sync comparison for a library's source and backup folders asynchronously."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
     if library_name not in libraries:
@@ -1079,8 +931,6 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
     if not src_cfg or not bk_cfg:
         raise HTTPException(status_code=400, detail="Library source and backup settings must be configured.")
         
-    import json
-    
     # 1. Try to fetch from cache if nocache is False
     if not nocache:
         try:
@@ -1106,56 +956,25 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
         if src_cfg["server"] == "local":
             src_top = get_local_library_metadata(src_cfg["path"], subpath, deep_scan=False)
         else:
-            src_top = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan=False)
+            src_top = await get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan=False)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Source listing failed: {str(e)}")
-        
-    # Get top-level backup metadata
+        raise HTTPException(status_code=500, detail=f"Failed to scan Source folder: {str(e)}")
+
+    # 3. Get top-level backup metadata
     try:
         if bk_cfg["server"] == "local":
             bk_top = get_local_library_metadata(bk_cfg["path"], subpath, deep_scan=False)
         else:
-            bk_top = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan=False)
+            bk_top = await get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan=False)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Backup listing failed: {str(e)}")
-        
-    top_items = get_library_union(src_top, bk_top)
+        raise HTTPException(status_code=500, detail=f"Failed to scan Backup folder: {str(e)}")
+
+    # 4. Compute differences
+    items = get_library_union(src_top, bk_top)
     
-    # If deep scan is enabled, recursively check differences under top-level subfolders
-    if deep_scan:
-        try:
-            if src_cfg["server"] == "local":
-                src_deep = get_local_library_metadata(src_cfg["path"], subpath, deep_scan=True)
-            else:
-                src_deep = get_remote_library_metadata(src_cfg["server"], src_cfg["path"], subpath, deep_scan=True)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Source deep scan failed: {str(e)}")
-            
-        try:
-            if bk_cfg["server"] == "local":
-                bk_deep = get_local_library_metadata(bk_cfg["path"], subpath, deep_scan=True)
-            else:
-                bk_deep = get_remote_library_metadata(bk_cfg["server"], bk_cfg["path"], subpath, deep_scan=True)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Backup deep scan failed: {str(e)}")
-            
-        deep_items = get_library_union(src_deep, bk_deep)
-        out_of_sync_paths = {item["relative_path"] for item in deep_items if item["status"] != "synced"}
-        
-        for item in top_items:
-            if item["is_dir"] and item["status"] == "synced":
-                # Check if there are any differences inside this directory
-                prefix = item["relative_path"] + "/"
-                has_diffs = any(p.startswith(prefix) for p in out_of_sync_paths)
-                
-                if has_diffs:
-                    item["status"] = "partial_sync"
-                else:
-                    item["status"] = "full_sync"
-                    
-    # 3. Update cache
+    # 5. Cache result
     try:
-        database.set_cached_library(library_name, subpath, deep_scan, json.dumps(top_items))
+        database.set_cached_library(library_name, subpath, deep_scan, json.dumps(items))
     except Exception:
         pass
         
@@ -1167,9 +986,28 @@ def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False
         "source_server": src_cfg["server"],
         "backup_base": bk_cfg["path"],
         "backup_server": bk_cfg["server"],
-        "items": top_items,
+        "items": items,
         "cached": False
     }
+
+class LibrarySyncRequest(BaseModel):
+    library_name: str
+    relative_path: str
+    direction: str
+
+class LibraryDeleteRequest(BaseModel):
+    library_name: str
+    relative_path: str
+    target: str
+
+class MediaInfoRequest(BaseModel):
+    library_name: str
+    relative_path: str
+
+class MediaConvertRequest(BaseModel):
+    library_name: str
+    relative_path: str
+    profile_name: str
 
 @app.post("/api/libraries/sync")
 async def sync_library_item(request: LibrarySyncRequest):
@@ -1185,13 +1023,9 @@ async def sync_library_item(request: LibrarySyncRequest):
     src_cfg = lib.get("source")
     bk_cfg = lib.get("backup")
     
-    import os
-    import subprocess
-    from pathlib import Path
-    
     item_rel_path = request.relative_path.replace("\\", "/")
     
-    def build_cmd(from_cfg, to_cfg, rel_path):
+    async def build_cmd(from_cfg, to_cfg, rel_path):
         src_base = from_cfg["path"].rstrip("/")
         dst_base = to_cfg["path"].rstrip("/")
         src_full = f"{src_base}/{rel_path}"
@@ -1217,7 +1051,10 @@ async def sync_library_item(request: LibrarySyncRequest):
                 "ssh", "-o", "StrictHostKeyChecking=no", "-i", key_path,
                 f"{user}@{host}", f"mkdir -p '{dst_parent}'"
             ]
-            subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                await run_async_subprocess(mkdir_cmd, timeout=15.0)
+            except Exception:
+                pass
             
         if from_cfg["server"] == "local" and to_cfg["server"] == "local":
             return f'cp -r "{src_full}" "{dst_parent}/"'
@@ -1238,24 +1075,22 @@ async def sync_library_item(request: LibrarySyncRequest):
             rc_to = remotes[to_cfg["server"]]
             return f'scp -3 -o StrictHostKeyChecking=no -i "{rc_from.get("key_path")}" -i "{rc_to.get("key_path")}" -r {rc_from.get("user")}@{rc_from.get("host")}:"{src_full}" {rc_to.get("user")}@{rc_to.get("host")}:"{dst_parent}/"'
 
-    if request.direction == "both":
-        # Bidirectional sync using rsync in two stages:
-        # Stage 1: Copy missing/newer items from Source to Backup
-        # Stage 2: Copy missing/newer items from Backup to Source
+    if request.direction == "source_to_backup":
+        cmd = await build_cmd(src_cfg, bk_cfg, item_rel_path)
+    elif request.direction == "backup_to_source":
+        cmd = await build_cmd(bk_cfg, src_cfg, item_rel_path)
+    elif request.direction == "both":
         src_base = src_cfg["path"].rstrip("/")
         dst_base = bk_cfg["path"].rstrip("/")
         src_full = f"{src_base}/{item_rel_path}"
         dst_full = f"{dst_base}/{item_rel_path}"
         
-        # Verify paths are allowed
         if not is_path_allowed(src_full, None if src_cfg["server"] == "local" else src_cfg["server"]):
             raise HTTPException(status_code=403, detail="Access denied: Source path is outside allowed roots.")
         if not is_path_allowed(dst_full, None if bk_cfg["server"] == "local" else bk_cfg["server"]):
             raise HTTPException(status_code=403, detail="Access denied: Destination path is outside allowed roots.")
             
-        # Ensure lineage (parent directories) exist on both sides
-        def ensure_parent_exists(server_name, path):
-            import subprocess
+        async def ensure_parent_exists(server_name, path):
             parent = "/".join(path.rstrip("/").split("/")[:-1])
             if not parent:
                 return
@@ -1269,59 +1104,81 @@ async def sync_library_item(request: LibrarySyncRequest):
                     "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc["key_path"],
                     f"{rc['user']}@{rc['host']}", f"mkdir -p '{parent}'"
                 ]
-                subprocess.run(mkdir_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                try:
+                    await run_async_subprocess(mkdir_cmd, timeout=15.0)
+                except Exception:
+                    pass
                 
-        ensure_parent_exists(src_cfg["server"], src_full)
-        ensure_parent_exists(bk_cfg["server"], dst_full)
+        await ensure_parent_exists(src_cfg["server"], src_full)
+        await ensure_parent_exists(bk_cfg["server"], dst_full)
 
-        # Ensure trailing slash for directory contents synchronization
         src_dir = src_full if src_full.endswith("/") else f"{src_full}/"
         dst_dir = dst_full if dst_full.endswith("/") else f"{dst_full}/"
         
-        cmd1 = ""
-        cmd2 = ""
-        
-        # 1. Local to Local
         if src_cfg["server"] == "local" and bk_cfg["server"] == "local":
-            cmd1 = f'rsync -rtu "{src_dir}" "{dst_dir}"'
-            cmd2 = f'rsync -rtu "{dst_dir}" "{src_dir}"'
-            
-        # 2. Local to Remote
+            cmd1 = f'rsync -avzu "{src_dir}" "{dst_dir}"'
+            cmd2 = f'rsync -avzu "{dst_dir}" "{src_dir}"'
+            cmd = f'{cmd1} && {cmd2}'
         elif src_cfg["server"] == "local" and bk_cfg["server"] != "local":
             rc = remotes[bk_cfg["server"]]
-            cmd1 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" "{src_dir}" {rc.get("user")}@{rc.get("host")}:"{dst_dir}"'
-            cmd2 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" {rc.get("user")}@{rc.get("host")}:"{dst_dir}" "{src_dir}"'
-            
-        # 3. Remote to Local
+            ssh_opt = f'-e "ssh -o StrictHostKeyChecking=no -i {rc["key_path"]}"'
+            cmd1 = f'rsync -avzu {ssh_opt} "{src_dir}" {rc["user"]}@{rc["host"]}:"{dst_dir}"'
+            cmd2 = f'rsync -avzu {ssh_opt} {rc["user"]}@{rc["host"]}:"{dst_dir}" "{src_dir}"'
+            cmd = f'{cmd1} && {cmd2}'
         elif src_cfg["server"] != "local" and bk_cfg["server"] == "local":
             rc = remotes[src_cfg["server"]]
-            cmd1 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" {rc.get("user")}@{rc.get("host")}:"{src_dir}" "{dst_dir}"'
-            cmd2 = f'rsync -rtu -e "ssh -o StrictHostKeyChecking=no -i \\"{rc.get("key_path")}\\"" "{dst_dir}" {rc.get("user")}@{rc.get("host")}:"{src_dir}"'
-            
-        # 4. Remote to Remote (Same Server)
-        elif src_cfg["server"] == bk_cfg["server"]:
-            rc = remotes[src_cfg["server"]]
-            cmd1 = f'ssh -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" {rc.get("user")}@{rc.get("host")} "rsync -rtu \\"{src_dir}\\" \\"{dst_dir}\\""'
-            cmd2 = f'ssh -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" {rc.get("user")}@{rc.get("host")} "rsync -rtu \\"{dst_dir}\\" \\"{src_dir}\\""'
-            
+            ssh_opt = f'-e "ssh -o StrictHostKeyChecking=no -i {rc["key_path"]}"'
+            cmd1 = f'rsync -avzu {ssh_opt} {rc["user"]}@{rc["host"]}:"{src_dir}" "{dst_dir}"'
+            cmd2 = f'rsync -avzu {ssh_opt} "{dst_dir}" {rc["user"]}@{rc["host"]}:"{src_dir}"'
+            cmd = f'{cmd1} && {cmd2}'
         else:
-            raise HTTPException(status_code=400, detail="Multi-server remote sync not supported.")
-            
-        await executor.start_task(cmd1, queue_name="fs")
-        await executor.start_task(cmd2, queue_name="fs")
-        return {"message": "Bidirectional rsync sync tasks queued successfully.", "commands": [cmd1, cmd2]}
-        
-    elif request.direction == "backup":
-        cmd = build_cmd(src_cfg, bk_cfg, item_rel_path)
+            raise HTTPException(status_code=400, detail="Bidirectional sync between two remote servers is not supported.")
     else:
-        cmd = build_cmd(bk_cfg, src_cfg, item_rel_path)
+        raise HTTPException(status_code=400, detail="Invalid sync direction.")
         
     await executor.start_task(cmd, queue_name="fs")
     return {"message": "Sync copy task queued successfully.", "command": cmd}
 
+@app.post("/api/libraries/delete")
+async def delete_library_item(request: LibraryDeleteRequest):
+    """Queues a deletion task for a library item."""
+    config = command_builder.load_config()
+    libraries = config.get("libraries", {})
+    remotes = config.get("remote_servers", {})
+    
+    if request.library_name not in libraries:
+        raise HTTPException(status_code=404, detail="Library not configured.")
+        
+    lib = libraries[request.library_name]
+    target_cfg = lib.get(request.target)
+    if not target_cfg:
+        raise HTTPException(status_code=400, detail="Invalid target specified.")
+        
+    base_path = target_cfg["path"].rstrip("/")
+    rel_path = request.relative_path.replace("\\", "/")
+    full_path = f"{base_path}/{rel_path}"
+    
+    if not is_path_allowed(full_path, None if target_cfg["server"] == "local" else target_cfg["server"]):
+        raise HTTPException(status_code=403, detail="Access denied: Path is outside allowed roots.")
+        
+    if target_cfg["server"] == "local":
+        cmd = f'rm -rf "{full_path}"'
+    else:
+        if target_cfg["server"] not in remotes:
+            raise HTTPException(status_code=400, detail="Remote server not configured.")
+        rc = remotes[target_cfg["server"]]
+        cmd = f'ssh -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" {rc.get("user")}@{rc.get("host")} "rm -rf \'{full_path}\'"'
+        
+    await executor.start_task(cmd, queue_name="fs")
+    return {"message": "Deletion task queued successfully.", "command": cmd}
+
 async def run_pipeline_command(task_id: str, command: str) -> bool:
+    start_time = datetime.now().isoformat()
     database.update_task_status(task_id, "Running", "")
-    database.update_task_start_time(task_id, datetime.now().isoformat())
+    database.update_task_start_time(task_id, start_time)
+    broadcaster.broadcast_task_update(task_id, "Running", "media", start_time)
+    counts = database.get_task_counts()
+    broadcaster.broadcast_task_counts(counts["ongoing"], counts["pending"])
     
     try:
         process = await asyncio.create_subprocess_shell(
@@ -1337,6 +1194,7 @@ async def run_pipeline_command(task_id: str, command: str) -> bool:
                     break
                 decoded = chunk.decode('utf-8', errors='replace').replace('\r', '\n')
                 database.append_task_output(task_id, decoded)
+                broadcaster.broadcast_task_output(task_id, decoded)
                 await asyncio.sleep(0.01)
                 
         await asyncio.gather(
@@ -1349,15 +1207,25 @@ async def run_pipeline_command(task_id: str, command: str) -> bool:
         end_time = datetime.now().isoformat()
         if process.returncode == 0:
             database.update_task_status(task_id, "Completed", end_time)
+            broadcaster.broadcast_task_update(task_id, "Completed", "media", start_time)
+            counts = database.get_task_counts()
+            broadcaster.broadcast_task_counts(counts["ongoing"], counts["pending"])
             return True
         else:
-            database.update_task_status(task_id, f"Failed (Exit Code {process.returncode})", end_time)
+            status_msg = f"Failed (Exit Code {process.returncode})"
+            database.update_task_status(task_id, status_msg, end_time)
+            broadcaster.broadcast_task_update(task_id, status_msg, "media", start_time)
+            counts = database.get_task_counts()
+            broadcaster.broadcast_task_counts(counts["ongoing"], counts["pending"])
             return False
             
     except Exception as e:
         end_time = datetime.now().isoformat()
         database.append_task_output(task_id, f"\nPipeline error: {str(e)}")
         database.update_task_status(task_id, "Failed (Exception)", end_time)
+        broadcaster.broadcast_task_update(task_id, "Failed (Exception)", "media", start_time)
+        counts = database.get_task_counts()
+        broadcaster.broadcast_task_counts(counts["ongoing"], counts["pending"])
         return False
 
 async def run_conversion_pipeline_task(
@@ -1368,13 +1236,7 @@ async def run_conversion_pipeline_task(
     t2_id: str,
     t3_id: str
 ):
-    import os
-    import uuid
     import shutil
-    import subprocess
-    from datetime import datetime
-    import database
-    import command_builder
     
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
@@ -1401,31 +1263,34 @@ async def run_conversion_pipeline_task(
     suffix = f"_{profile_name.replace(' ', '_')}"
     candidate = f"{name_base}{suffix}{out_ext}"
     
-    def file_exists(path):
+    async def async_file_exists(path):
         if server == "local":
             return os.path.exists(path)
         else:
             rc = remotes[server]
             cmd = [
                 "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc["key_path"],
-                f"{rc['user']}@{rc['host']}", f"test -e '{path}'"
+                f"{rc['user']}@{rc['host']}", f"test -e {shlex.quote(path)}"
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return res.returncode == 0
+            try:
+                code, _, _ = await run_async_subprocess(cmd, timeout=15.0)
+                return code == 0
+            except Exception:
+                return False
             
     parent_rel_path = "/".join(rel_path.split("/")[:-1])
     parent_full_path = f"{base_path}/{parent_rel_path}" if parent_rel_path else base_path
     
     counter = 1
     dest_filename = candidate
-    while file_exists(f"{parent_full_path}/{dest_filename}"):
+    while await async_file_exists(f"{parent_full_path}/{dest_filename}"):
         dest_filename = f"{name_base}{suffix}_{counter}{out_ext}"
         counter += 1
+        await asyncio.sleep(0.05)
         
     dest_full_path = f"{parent_full_path}/{dest_filename}"
     
-    conversion_temp = "/home/sayang/Programs/pareo/conversion_temp"
-    os.makedirs(conversion_temp, exist_ok=True)
+    conversion_temp = str(DEFAULT_CONVERSION_TEMP)
     
     temp_src_id = str(uuid.uuid4())
     temp_src_file = ""
@@ -1438,6 +1303,7 @@ async def run_conversion_pipeline_task(
             database.update_task_start_time(t1_id, datetime.now().isoformat())
             database.append_task_output(t1_id, "Source file is already local. Skipping copy stage.")
             database.update_task_status(t1_id, "Completed", datetime.now().isoformat())
+            broadcaster.broadcast_task_update(t1_id, "Completed", "media")
             
             local_src_file = src_full
         else:
@@ -1452,6 +1318,8 @@ async def run_conversion_pipeline_task(
                 end_time = datetime.now().isoformat()
                 database.update_task_status(t2_id, "Failed (Dependency Failed)", end_time)
                 database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
+                broadcaster.broadcast_task_update(t2_id, "Failed (Dependency Failed)", "media")
+                broadcaster.broadcast_task_update(t3_id, "Failed (Dependency Failed)", "media")
                 return
                 
         # --- STAGE 2: CONVERT ---
@@ -1462,20 +1330,24 @@ async def run_conversion_pipeline_task(
         if not success:
             end_time = datetime.now().isoformat()
             database.update_task_status(t3_id, "Failed (Dependency Failed)", end_time)
+            broadcaster.broadcast_task_update(t3_id, "Failed (Dependency Failed)", "media")
             return
             
         # --- STAGE 3: BRING BACK CONVERTED FILE ---
         database.update_task_status(t3_id, "Running")
         database.update_task_start_time(t3_id, datetime.now().isoformat())
+        broadcaster.broadcast_task_update(t3_id, "Running", "media")
         
         if server == "local":
             try:
                 database.append_task_output(t3_id, f"Moving local converted file to target: {dest_full_path}")
                 shutil.move(temp_dst_file, dest_full_path)
                 database.update_task_status(t3_id, "Completed", datetime.now().isoformat())
+                broadcaster.broadcast_task_update(t3_id, "Completed", "media")
             except Exception as e:
                 database.append_task_output(t3_id, f"\nError moving file: {str(e)}")
                 database.update_task_status(t3_id, "Failed (Move Error)", datetime.now().isoformat())
+                broadcaster.broadcast_task_update(t3_id, "Failed (Move Error)", "media")
         else:
             rc = remotes[server]
             bring_back_cmd = f'scp -o StrictHostKeyChecking=no -i "{rc.get("key_path")}" "{temp_dst_file}" {rc.get("user")}@{rc.get("host")}:"{dest_full_path}"'
@@ -1483,7 +1355,6 @@ async def run_conversion_pipeline_task(
             success = await run_pipeline_command(t3_id, bring_back_cmd)
             
     finally:
-        # Always clean up temporary input and output files
         if temp_src_file and os.path.exists(temp_src_file):
             try:
                 os.remove(temp_src_file)
@@ -1496,7 +1367,8 @@ async def run_conversion_pipeline_task(
                 pass
 
 @app.post("/api/libraries/media-info")
-def get_media_info(request: MediaInfoRequest):
+async def get_media_info(request: MediaInfoRequest):
+    """Retrieves ffprobe stream details for a media file."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
     remotes = config.get("remote_servers", {})
@@ -1508,12 +1380,7 @@ def get_media_info(request: MediaInfoRequest):
     src_cfg = lib.get("source")
     bk_cfg = lib.get("backup")
     
-    import json
-    import subprocess
-    import shlex
-    
-    # Helper to check file existence locally or remotely
-    def remote_file_exists(server_name, path):
+    async def remote_file_exists(server_name, path):
         if server_name == "local":
             return os.path.exists(path)
         else:
@@ -1524,21 +1391,23 @@ def get_media_info(request: MediaInfoRequest):
                 "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc["key_path"],
                 f"{rc['user']}@{rc['host']}", f"test -e {shlex.quote(path)}"
             ]
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            return res.returncode == 0
+            try:
+                retcode, _, _ = await run_async_subprocess(cmd, timeout=15.0)
+                return retcode == 0
+            except Exception:
+                return False
             
     rel_path = request.relative_path.replace("\\", "/")
     src_path = f"{src_cfg['path'].rstrip('/')}/{rel_path}"
     
-    if remote_file_exists(src_cfg["server"], src_path):
+    if await remote_file_exists(src_cfg["server"], src_path):
         target_cfg = src_cfg
         full_path = src_path
-    elif bk_cfg and remote_file_exists(bk_cfg["server"], f"{bk_cfg['path'].rstrip('/')}/{rel_path}"):
+    elif await remote_file_exists(bk_cfg["server"], f"{bk_cfg['path'].rstrip('/')}/{rel_path}"):
         target_cfg = bk_cfg
         full_path = f"{bk_cfg['path'].rstrip('/')}/{rel_path}"
     else:
-        target_cfg = src_cfg
-        full_path = src_path
+        raise HTTPException(status_code=404, detail="File does not exist in either repository.")
         
     server = target_cfg["server"]
     
@@ -1552,7 +1421,7 @@ def get_media_info(request: MediaInfoRequest):
             "ffprobe", "-v", "quiet", "-print_format", "json",
             "-show_format", "-show_streams", full_path
         ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        retcode, stdout, stderr = await run_async_subprocess(cmd, timeout=15.0)
     else:
         if server not in remotes:
             raise HTTPException(status_code=400, detail="Remote server not configured.")
@@ -1562,37 +1431,40 @@ def get_media_info(request: MediaInfoRequest):
             "ssh", "-o", "StrictHostKeyChecking=no", "-i", rc.get("key_path"),
             f"{rc.get('user')}@{rc.get('host')}", ffprobe_cmd
         ]
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        retcode, stdout, stderr = await run_async_subprocess(cmd, timeout=15.0)
         
-    if res.returncode != 0:
+    if retcode != 0:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch media info. Return code: {res.returncode}. Stderr: {res.stderr.strip()}. Stdout: {res.stdout.strip()}. Cmd: {cmd}"
+            detail=f"Failed to fetch media info. Return code: {retcode}. Stderr: {stderr.strip()}."
         )
         
     try:
-        data = json.loads(res.stdout)
+        data = json.loads(stdout)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to parse ffprobe output.")
         
     streams = data.get("streams", [])
     format_data = data.get("format", {})
     
-    try:
-        duration_sec = float(format_data.get("duration", 0))
-    except (ValueError, TypeError):
-        duration_sec = 0
-        
-    hours, remainder = divmod(int(duration_sec), 3600)
-    minutes, seconds = divmod(remainder, 60)
-    duration_str = f"{hours}h {minutes}m {seconds}s" if hours else f"{minutes}m {seconds}s"
+    duration_sec = float(format_data.get("duration", 0))
+    hours = int(duration_sec // 3600)
+    minutes = int((duration_sec % 3600) // 60)
+    seconds = int(duration_sec % 60)
+    formatted_duration = f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours > 0 else f"{minutes:02d}:{seconds:02d}"
+    
+    size_bytes = int(format_data.get("size", 0))
+    formatted_size = f"{size_bytes / (1024 * 1024):.2f} MB" if size_bytes < 1024**3 else f"{size_bytes / (1024**3):.2f} GB"
+    
+    bitrate = int(format_data.get("bit_rate", 0))
+    formatted_bitrate = f"{bitrate // 1000} kbps" if bitrate > 0 else "unknown"
     
     details = {
-        "filename": format_data.get("filename", "").split("/")[-1],
-        "format": format_data.get("format_long_name", "Unknown"),
-        "duration": duration_str,
-        "size": f"{round(int(format_data.get('size', 0)) / (1024*1024), 2)} MB" if format_data.get("size") else "0 MB",
-        "bitrate": f"{round(int(format_data.get('bit_rate', 0)) / 1000, 2)} kbps" if format_data.get("bit_rate") else "Unknown",
+        "filename": rel_path.split("/")[-1],
+        "format": format_data.get("format_long_name", format_data.get("format_name", "unknown")),
+        "duration": formatted_duration,
+        "size": formatted_size,
+        "bitrate": formatted_bitrate,
         "video": [],
         "audio": [],
         "subtitle": []
@@ -1679,5 +1551,5 @@ async def start_media_conversion(request: MediaConvertRequest, background_tasks:
         "tasks": [t1_id, t2_id, t3_id]
     }
 
-# THIS MUST BE THE VERY LAST THING IN THE FILE
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# Static files mount - must be after all /api routes
+app.mount("/", StaticFiles(directory=str(BASE_DIR / "static"), html=True), name="static")

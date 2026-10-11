@@ -4,7 +4,11 @@ import signal
 import socket
 import subprocess
 import re
+from pathlib import Path
 from typing import Optional, Dict, Any
+import command_builder
+
+BASE_DIR = Path(__file__).resolve().parent
 
 async def is_port_open_async(port: int) -> bool:
     """Asynchronously checks if a local port is open by attempting a connection."""
@@ -71,32 +75,44 @@ async def get_process_status(name: str, config: dict) -> dict:
     
     return {"status": "Stopped", "pid": None, "port": port}
 
-async def start_process(name: str, config: dict) -> dict:
+async def get_all_process_statuses() -> Dict[str, Any]:
+    """Returns statuses for all configured processes in config.json."""
+    config = command_builder.load_config()
+    processes = config.get("processes", {})
+    statuses = {}
+    for name, p_cfg in processes.items():
+        statuses[name] = await get_process_status(name, p_cfg)
+    return statuses
+
+async def start_process(name: str) -> dict:
     """Spawns the process as a fully detached daemon/process group."""
-    status_info = await get_process_status(name, config)
+    config = command_builder.load_config()
+    processes = config.get("processes", {})
+    if name not in processes:
+        return {"success": False, "message": f"Process '{name}' not found in configuration."}
+        
+    p_cfg = processes[name]
+    status_info = await get_process_status(name, p_cfg)
     if status_info["status"] == "Running":
-        return {"success": False, "message": f"Process already running on port {config.get('port')}."}
+        return {"success": False, "message": f"Process already running on port {p_cfg.get('port')}."}
     
-    command = config.get("command")
-    cwd = config.get("cwd") or os.getcwd()
-    log_file_path = config.get("log_file")
+    command = p_cfg.get("command")
+    cwd = p_cfg.get("cwd") or str(BASE_DIR)
+    log_file_path = p_cfg.get("log_file")
     
     if not command:
         return {"success": False, "message": "No command configured."}
         
     if log_file_path:
-        # Resolve log file relative to cwd or root
         if not os.path.isabs(log_file_path):
-            log_file_path = os.path.join(os.getcwd(), log_file_path)
+            log_file_path = str(BASE_DIR / log_file_path)
         
-        # Ensure log folder exists
         os.makedirs(os.path.dirname(log_file_path), exist_ok=True)
         log_fd = open(log_file_path, "a")
     else:
         log_fd = subprocess.DEVNULL
 
     try:
-        # start_new_session=True detaches the process group so it runs independently of Pareo
         process = subprocess.Popen(
             command,
             shell=True,
@@ -116,16 +132,21 @@ async def start_process(name: str, config: dict) -> dict:
         if log_file_path and log_fd != subprocess.DEVNULL:
             log_fd.close()
 
-async def stop_process(name: str, config: dict, force: bool = False) -> dict:
+async def stop_process(name: str, force: bool = False) -> dict:
     """Gracefully terminates (SIGTERM) or kills (SIGKILL) the process group."""
-    status_info = await get_process_status(name, config)
+    config = command_builder.load_config()
+    processes = config.get("processes", {})
+    if name not in processes:
+        return {"success": False, "message": f"Process '{name}' not found in configuration."}
+        
+    p_cfg = processes[name]
+    status_info = await get_process_status(name, p_cfg)
     if status_info["status"] == "Stopped":
         return {"success": False, "message": "Process is not running."}
     
     pid = status_info.get("pid")
     if not pid:
-        # If port is open but PID lookup failed, try killing the port binding via fuser
-        port = config.get("port")
+        port = p_cfg.get("port")
         try:
             cmd = f"fuser -k -9 {port}/tcp" if force else f"fuser -k {port}/tcp"
             proc = await asyncio.create_subprocess_shell(cmd)
@@ -135,9 +156,6 @@ async def stop_process(name: str, config: dict, force: bool = False) -> dict:
             return {"success": False, "message": f"PID lookup failed and fuser failed: {str(e)}"}
 
     try:
-        # Since we ran Popen with start_new_session=True, the process group ID is equal to the PID.
-        # Sending a signal to -pid (negative pid) sends it to the entire process group, terminating
-        # both the shell wrapper and the actual server process.
         sig = signal.SIGKILL if force else signal.SIGTERM
         os.killpg(pid, sig)
         return {"success": True, "message": f"Sent signal {sig.name} to process group {pid}."}
@@ -151,31 +169,41 @@ async def stop_process(name: str, config: dict, force: bool = False) -> dict:
         return {"success": False, "message": f"Failed to stop process: {str(e)}"}
 
 def read_last_lines(file_path: str, num_lines: int = 100) -> str:
-    """Reads the last N lines of a file efficiently by seeking close to the end."""
+    """Reads the last N lines of a file safely and efficiently."""
+    if not isinstance(file_path, str) or "\n" in file_path or "\r" in file_path or "\0" in file_path or len(file_path) >= 1024:
+        return "Invalid file path"
+        
+    if not os.path.isabs(file_path):
+        file_path = str(BASE_DIR / file_path)
+        
     if not os.path.exists(file_path):
         return f"Log file not found: {file_path}"
-    
-    # Resolve relative to cwd if needed
-    if not os.path.isabs(file_path):
-        file_path = os.path.join(os.getcwd(), file_path)
         
     try:
         with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
             try:
                 f.seek(0, os.SEEK_END)
                 size = f.tell()
-                # 50KB read limit is more than enough for ~100 lines
                 chunk_size = min(size, 50 * 1024)
                 f.seek(size - chunk_size)
                 lines = f.readlines()
-                # If we seeked mid-line, discard the first line as it may be truncated
                 if len(lines) > 1 and chunk_size < size:
                     lines = lines[1:]
                 return "".join(lines[-num_lines:])
             except Exception:
-                # Fallback to reading the full file if it is small or seek fails
                 f.seek(0)
                 lines = f.readlines()
                 return "".join(lines[-num_lines:])
     except Exception as e:
         return f"Failed to read logs: {str(e)}"
+
+def get_process_logs(name: str, lines: int = 200) -> str:
+    """Retrieves log file output for a named process."""
+    config = command_builder.load_config()
+    processes = config.get("processes", {})
+    if name not in processes:
+        return f"Process '{name}' not found."
+    log_file = processes[name].get("log_file")
+    if not log_file:
+        return f"No log_file configured for '{name}'."
+    return read_last_lines(log_file, num_lines=lines)

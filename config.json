@@ -4,9 +4,17 @@
         "/Volumes"
     ],
     "libraries": {
-        "Videos Library": {
-            "source": { "server": "local", "path": "/home/sayang/Videos" },
-            "backup": { "server": "Macmini", "path": "/Users/sri/Downloads" }
+        "Movies": {
+            "source": { "server": "Macmini", "path": "/Volumes/Server HDD2/VidsMini/Movies/English" },
+            "backup": { "server": "Macmini", "path": "/Volumes/SRIPASS/Sri/Vids/Movies/English/LiveAction" }
+        },
+        "Series": {
+            "source": { "server": "Macmini", "path": "/Volumes/Server HDD2/VidsMini/Series" },
+            "backup": { "server": "Macmini", "path": "/Volumes/SRIPASS/Sri/Vids/Series" }
+        },
+        "Documentaries": {
+            "source": { "server": "Macmini", "path": "/Volumes/Server HDD2/VidsMini/Docus" },
+            "backup": { "server": "Macmini", "path": "/Volumes/SRIPASS/Sri/Vids/Documentaries" }
         }
     },
     "bookmarks": {

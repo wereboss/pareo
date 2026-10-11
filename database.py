@@ -1,19 +1,24 @@
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
-DB_FILE = "pareo.db"
+BASE_DIR = Path(__file__).resolve().parent
+DB_FILE = BASE_DIR / "pareo.db"
 
 def get_conn():
-    """Returns a dictionary-like cursor connection."""
+    """Returns a dictionary-like cursor connection configured with performance PRAGMAs."""
     # check_same_thread=False allows FastAPI/Asyncio to share the connection safely
-    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    conn = sqlite3.connect(str(DB_FILE), check_same_thread=False)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode = WAL;")
+    conn.execute("PRAGMA synchronous = NORMAL;")
+    conn.execute("PRAGMA busy_timeout = 5000;")
+    conn.execute("PRAGMA wal_autocheckpoint = 1000;")
     return conn
 
 def init_db():
-    """Creates the schema if it doesn't exist."""
+    """Creates the schema and performance indices if they don't exist."""
     with get_conn() as conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 task_id TEXT PRIMARY KEY,
@@ -62,6 +67,18 @@ def init_db():
             END
             WHERE queue_name IS NULL
         """)
+        conn.commit()
+
+        # B-Tree indices for status filtering, queue scheduling, and timeline pagination
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_queue_status ON tasks(queue_name, status);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_start_time ON tasks(start_time DESC);")
+        conn.commit()
+
+def vacuum_db():
+    """Reclaims unallocated pages resulting from task output pruning."""
+    with get_conn() as conn:
+        conn.execute("VACUUM;")
         conn.commit()
 
 def insert_task(task_id: str, command: str, status: str, start_time: str, queue_name: str = "default"):
@@ -181,13 +198,11 @@ def reset_task_for_retry(task_id: str, new_start_time: str):
         )
         conn.commit()    
 
-
 def update_task_start_time(task_id: str, start_time: str):
     """Updates the start time when a task officially moves out of the queue."""
     with get_conn() as conn:
         conn.execute("UPDATE tasks SET start_time = ? WHERE task_id = ?", (start_time, task_id))
         conn.commit()
-
 
 def purge_tasks(age: str) -> int:
     """Purges historical tasks (excluding active Pending/Running ones) based on the age threshold."""

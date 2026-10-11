@@ -1,10 +1,14 @@
 import json
 import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_FILE = BASE_DIR / "config.json"
 
 def load_config():
-    if os.path.exists('config.json'):
+    if CONFIG_FILE.exists():
         try:
-            with open('config.json', 'r') as f:
+            with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             print(f"[!] Error loading config.json: {str(e)}")

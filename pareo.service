@@ -1,0 +1,18 @@
+[Unit]
+Description=Pareo Command Engine Service (Port 9046)
+After=network.target
+
+[Service]
+Type=simple
+User=sayang
+Group=sayang
+WorkingDirectory=/home/sayang/Programs/pareo
+Environment="PORT=9046"
+ExecStart=/home/sayang/Programs/pareo/run.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -5,7 +5,10 @@ import os
 import argparse
 from datetime import datetime
 import signal
+from pathlib import Path
 import database
+
+BASE_DIR = Path(__file__).resolve().parent
 
 # Global refs for signal handling
 child_process = None
@@ -15,8 +18,8 @@ is_cancelled = False
 def sigterm_handler(signum, frame):
     global is_cancelled
     is_cancelled = True
-    sys.stdout.write(f"[*] Received SIGTERM/SIGINT signal for task {task_id}. Terminating subprocess...\n")
-    sys.stdout.flush()
+    sys.stderr.write(f"[*] Received SIGTERM/SIGINT signal for task {task_id}. Terminating subprocess...\n")
+    sys.stderr.flush()
     if child_process:
         try:
             # Send SIGTERM to the process group of the child subprocess
@@ -47,6 +50,9 @@ async def read_stream(stream, task_id, log_file):
             except Exception as e:
                 sys.stderr.write(f"[!] DB Append Error: {e}\n")
                 sys.stderr.flush()
+            # Stream chunk to runner stdout for executor SSE broadcaster
+            sys.stdout.write(decoded_chunk)
+            sys.stdout.flush()
             await asyncio.sleep(0.01)
 
 async def main():
@@ -72,13 +78,13 @@ async def main():
     database.update_task_pid(task_id, my_pid)
     database.update_task_status(task_id, "Running")
     
-    # Ensure logs folder exists
-    log_dir = os.path.join(os.getcwd(), "logs", "tasks")
-    os.makedirs(log_dir, exist_ok=True)
-    log_file_path = os.path.join(log_dir, f"{task_id}.log")
+    # Ensure logs folder exists dynamically
+    log_dir = BASE_DIR / "logs" / "tasks"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file_path = log_dir / f"{task_id}.log"
     
-    sys.stdout.write(f"[*] Task {task_id} runner starting. PID={my_pid}\n")
-    sys.stdout.flush()
+    sys.stderr.write(f"[*] Task {task_id} runner starting. PID={my_pid}\n")
+    sys.stderr.flush()
     
     return_code = -1
     
@@ -106,6 +112,8 @@ async def main():
             log_file.write(error_msg)
             log_file.flush()
             database.append_task_output(task_id, error_msg)
+            sys.stdout.write(error_msg)
+            sys.stdout.flush()
             return_code = -999
             
     end_time = datetime.now().isoformat()
@@ -114,15 +122,14 @@ async def main():
     if is_cancelled:
         database.update_task_status(task_id, "Cancelled", end_time)
         database.append_task_output(task_id, "\n[Task Cancelled by User]")
-        sys.stdout.write(f"[*] Task {task_id} completed as Cancelled.\n")
+        sys.stderr.write(f"[*] Task {task_id} completed as Cancelled.\n")
     elif return_code == 0:
         database.update_task_status(task_id, "Completed", end_time)
-        sys.stdout.write(f"[*] Task {task_id} completed successfully.\n")
+        sys.stderr.write(f"[*] Task {task_id} completed successfully.\n")
     else:
-        status_str = f"Failed (Code: {return_code})"
-        database.update_task_status(task_id, status_str, end_time)
-        sys.stdout.write(f"[*] Task {task_id} failed with code {return_code}.\n")
-    sys.stdout.flush()
+        status_msg = f"Failed ({return_code})"
+        database.update_task_status(task_id, status_msg, end_time)
+        sys.stderr.write(f"[*] Task {task_id} failed with code {return_code}.\n")
 
 if __name__ == "__main__":
     asyncio.run(main())

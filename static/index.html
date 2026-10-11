@@ -1,64 +1,83 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="wipeout">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pareo | Command Engine</title>
-    <link rel="stylesheet" href="style.css?v=1.2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=2.0">
     <link rel="icon" href="data:,">    
 </head>
 <body>
-    <div id="global-loading-bar" style="height: 3px; background: var(--cyan, #2aa198); width: 0%; position: fixed; top: 0; left: 0; z-index: 9999; transition: width 0.2s ease, opacity 0.3s ease; opacity: 0;"></div>
-    <nav class="top-nav">
-        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-            <h3 style="margin: 0; color: #333;">Pareo</h3>
-            <div id="task-ticker" class="ticker-badge" style="display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 20px; font-size: 0.82em; font-weight: bold; transition: all 0.3s ease;">
-                <span id="ticker-dot" class="ticker-dot idle" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block; transition: background 0.3s ease;"></span>
+    <!-- CRT Scanline Overlay Container for Atompunk Mode -->
+    <div class="crt-overlay" aria-hidden="true"></div>
+
+    <!-- Non-Blocking Toast Notification Stack -->
+    <div id="toast-container" class="toast-container" role="region" aria-label="Notifications" aria-live="polite"></div>
+
+    <!-- Global Loading Bar -->
+    <div id="global-loading-bar"></div>
+
+    <!-- Sticky Top Header -->
+    <header class="top-nav">
+        <div class="brand-wrapper">
+            <h2 class="brand-title"><span>⚡</span> PAREO</h2>
+            <div id="task-ticker" class="ticker-badge" role="status" aria-label="Task Queue Telemetry">
+                <span id="ticker-dot" class="ticker-dot"></span>
                 <span id="ticker-text">Ongoing: 0 | Pending: 0</span>
             </div>
-            <button id="btn-lock" onclick="logout()" style="background: none; border: none; color: var(--base1); cursor: pointer; display: none; align-items: center; padding: 0;" title="Lock Instance">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transition: color 0.3s;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-            </button>
         </div>
-        <div class="nav-links">
+
+        <nav class="nav-links" aria-label="Primary Navigation">
             <button id="btn-tasks" class="nav-btn active" onclick="switchTab('tasks')">Tasks Queue</button>
             <button id="btn-utilities" class="nav-btn" onclick="switchTab('utilities')">Utilities</button>
             <button id="btn-libraries" class="nav-btn" onclick="switchTab('libraries')">Libraries</button>
-        </div>
-    </nav>
-    
-    <div class="main-content">
+        </nav>
 
-        <div id="tab-tasks" style="display: block;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <button id="btn-theme-toggle" class="btn-theme-switcher" onclick="toggleTheme()" aria-label="Toggle Bespoke Theme">
+                <span id="theme-icon">⚡</span>
+                <span id="theme-label">WIPEOUT</span>
+            </button>
+        </div>
+    </header>
+    
+    <!-- Main Content Area -->
+    <main class="main-content">
+        <!-- TAB 1: TASKS QUEUE -->
+        <section id="tab-tasks" style="display: block;">
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-                    <h4 style="margin: 0;">Active Tasks</h4>
+                    <h3 style="margin: 0;">Task Orchestration Queue</h3>
                     <div class="purge-control" style="display: flex; align-items: center; gap: 8px;">
-                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1); margin: 0;">Purge Tasks:</label>
-                        <select id="purge-age" style="padding: 5px 8px; font-size: 0.85em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                        <label for="purge-age" style="margin: 0;">Purge Tasks:</label>
+                        <select id="purge-age" style="width: auto; min-width: 140px;">
                             <option value="1d">Older than 1 Day</option>
                             <option value="1w">Older than 1 Week</option>
                             <option value="2w">Older than 2 Weeks</option>
                             <option value="all">Whole Queue</option>
                         </select>
-                        <button class="btn btn-sm" onclick="purgeTasks()" style="padding: 5px 12px; font-size: 0.85em; cursor: pointer; border-radius: 4px; font-weight: bold; background: var(--base03) !important; color: var(--cyan) !important; border: 1px solid var(--cyan) !important;">Purge</button>
+                        <button class="btn btn-secondary btn-sm" onclick="purgeTasks()">Purge</button>
                     </div>
                 </div>
                 
+                <!-- Filter Controls -->
                 <div class="filters-bar" style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;">
-                    <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 150px; flex-grow: 1;">
-                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1);">Queue</label>
-                        <select id="filter-queue" onchange="applyFilters()" style="width: 100%; padding: 8px; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                    <div class="filter-group" style="display: flex; flex-direction: column; min-width: 140px; flex-grow: 1;">
+                        <label for="filter-queue">Queue Channel</label>
+                        <select id="filter-queue" onchange="applyFilters()">
                             <option value="">All Queues</option>
-                            <option value="media">Media</option>
-                            <option value="network">Network</option>
-                            <option value="fs">FS</option>
+                            <option value="media">Media (FFMPEG)</option>
+                            <option value="network">Network (Downloads)</option>
+                            <option value="fs">FS (Filesystem)</option>
                             <option value="default">Default</option>
                         </select>
                     </div>
-                    <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 150px; flex-grow: 1;">
-                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1);">Status</label>
-                        <select id="filter-status" onchange="applyFilters()" style="width: 100%; padding: 8px; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                    <div class="filter-group" style="display: flex; flex-direction: column; min-width: 140px; flex-grow: 1;">
+                        <label for="filter-status">Status</label>
+                        <select id="filter-status" onchange="applyFilters()">
                             <option value="">All Statuses</option>
                             <option value="Incomplete">Incomplete</option>
                             <option value="Pending">Pending</option>
@@ -67,136 +86,136 @@
                             <option value="Failed">Failed</option>
                         </select>
                     </div>
-                    <div class="filter-group" style="display: flex; flex-direction: column; gap: 5px; min-width: 250px; flex-grow: 2;">
-                        <label style="font-size: 0.85em; font-weight: bold; color: var(--base1);">Command Search</label>
-                        <input type="text" id="filter-command" oninput="applyFiltersWithDebounce()" placeholder="Search command..." style="width: 100%; padding: 8px; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan);">
+                    <div class="filter-group" style="display: flex; flex-direction: column; min-width: 220px; flex-grow: 2;">
+                        <label for="filter-command">Search Workload</label>
+                        <input type="text" id="filter-command" oninput="applyFiltersWithDebounce()" placeholder="Filter by command...">
                     </div>
-                    <div class="filter-group" style="min-width: 100px;">
-                        <button class="btn" onclick="clearFilters()" style="width: 100%; padding: 8px 15px; height: 37px; font-size: 0.9em; cursor: pointer; border-radius: 4px; font-weight: bold; display: flex; align-items: center; justify-content: center;">Clear Filters</button>
+                    <div class="filter-group" style="min-width: 120px;">
+                        <button class="btn btn-secondary" onclick="clearFilters()" style="width: 100%;">Reset Filters</button>
                     </div>
                 </div>
                 
+                <!-- Desktop High-Density Table (>640px) -->
                 <div class="table-responsive">
                     <table id="tasks-table">
-                    <thead>
-                        <tr>
-                            <th style="width: 10%; text-align: left;">Details</th>
-                            <th style="width: 30%; text-align: left;">Command</th>
-                            <th style="width: 5%; text-align: center;">Status</th>
-                            <th style="width: 55%; text-align: left;">Output</th>
-                        </tr>
-                    </thead>
-                        <tbody>
-                            </tbody>
+                        <thead>
+                            <tr>
+                                <th style="width: 12%; text-align: left;">Details</th>
+                                <th style="width: 28%; text-align: left;">Workload Command</th>
+                                <th style="width: 10%; text-align: center;">Status</th>
+                                <th style="width: 50%; text-align: left;">Terminal Output</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
                     </table>
                 </div>
+
+                <!-- Mobile Responsive Task Cards (<640px) -->
+                <div id="tasks-card-container" class="task-card-container"></div>
+
                 <div id="tasks-load-more-container" style="text-align: center; margin-top: 20px; display: none; padding-bottom: 10px;">
-                    <button id="btn-load-more-tasks" class="btn" onclick="loadMoreTasks()" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 8px 24px; cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 0.9em; transition: all 0.2s;">Load More Tasks</button>
+                    <button id="btn-load-more-tasks" class="btn btn-secondary" onclick="loadMoreTasks()">Load More Tasks</button>
                 </div>
             </div>
-        </div>       
-        <div id="tab-utilities" style="display: none;">
-            <h3>Utilities</h3>
+        </section>
+
+        <!-- TAB 2: UTILITIES -->
+        <section id="tab-utilities" style="display: none;">
             <div class="card" id="switchboard-card">
-                <h4 style="margin-top: 0;">System Switchboard</h4>
-                <div id="switchboard-container">
-                    </div>
+                <h4>System Switchboard</h4>
+                <p>Execute system commands, daemons, and quick scripts directly on the host.</p>
+                <div id="switchboard-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px;"></div>
             </div>
+
             <div class="utilities-grid"> 
                 <!-- Left Column: Process Monitor & Custom Cards -->
                 <div class="utility-col" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
                     <div class="card" id="process-monitor-card">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h4 style="margin: 0;">Local Process Monitor</h4>
-                            <button class="btn btn-sm" onclick="fetchProcessStatuses()" style="padding: 4px 8px; font-size: 0.85em;">⟳ Refresh</button>
+                            <h4 style="margin: 0;">Local Process Supervisor</h4>
+                            <button class="btn btn-secondary btn-sm" onclick="fetchProcessStatuses()">⟳ Refresh</button>
                         </div>
-                        <p style="margin-top: 0; color: #666; font-size: 0.9em;">Monitor, start, or stop configured server processes.</p>
+                        <p>Supervise, start, or stop configured server processes.</p>
                         <div id="process-list" style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
-                            <p style="color: #999; font-style: italic; font-size: 0.9em;">Loading processes...</p>
+                            <p style="color: var(--text-muted); font-style: italic; font-size: 0.9em;">Loading process status...</p>
                         </div>
                     </div>
-                    <div id="generic-cards-container" style="display: contents;">
-                    </div>
+                    <div id="generic-cards-container" style="display: contents;"></div>
                 </div>
 
                 <!-- Right Column: File Explorer & FFMPEG Processing -->
                 <div class="utility-col" style="display: flex; flex-direction: column; gap: 20px; width: 100%;">
                     <div class="card">
-                        <h4>File Explorer</h4>
-                        <p>Browse and manage files on the host machine.</p>
+                        <h4>Filesystem Explorer</h4>
+                        <p>Browse and batch manage files on local and remote nodes.</p>
                         <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap;">
-                            <select id="fs-explore-server" onchange="onExploreServerChange()" style="width: 150px; padding: 8px; border: 1px solid var(--border); border-radius: 4px; font-weight: bold;">
+                            <select id="fs-explore-server" onchange="onExploreServerChange()" style="width: 160px;">
                                 <option value="">Local Filesystem</option>
                             </select>
-                            <input type="text" id="fs-explore-path" list="bookmarks-list" placeholder="/tmp/" value="/" style="flex-grow: 1; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                            <button class="btn" onclick="openExplorer()">Browse</button>
-                            <span id="fs-notify" style="color: #2ecc71; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                            <input type="text" id="fs-explore-path" list="bookmarks-list" placeholder="/tmp/" value="/" style="flex-grow: 1;">
+                            <button class="btn btn-primary" onclick="openExplorer()">Browse</button>
                         </div>
                     </div>
 
                     <div class="card">
-                        <h4>Media Processing (FFMPEG)</h4>
-                        <p>Convert video or audio files on the host machine.</p>
+                        <h4>Media Transcoding (FFMPEG)</h4>
+                        <p>Orchestrate high-definition video and audio conversions.</p>
 
                         <div style="margin-bottom: 10px;">
-                            <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Conversion Profile</label>
-                            <select id="ffmpeg-profile" onchange="onProfileChange()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                            <label for="ffmpeg-profile">Transcoding Profile</label>
+                            <select id="ffmpeg-profile" onchange="onProfileChange()">
                                 <option value="Default">Loading profiles...</option>
                             </select>
                         </div>
 
-                        <div style="margin-bottom: 15px;">
-                            <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Execution Mode</label>
-                            <select id="ffmpeg-mode" onchange="updateFfmpegUI()" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px; background-color: #f8f9fa;">
-                                </select>
+                        <div style="margin-bottom: 10px;">
+                            <label for="ffmpeg-mode">Execution Mode</label>
+                            <select id="ffmpeg-mode" onchange="updateFfmpegUI()"></select>
                         </div>
 
                         <div style="margin-bottom: 10px;">
-                            <label id="lbl-ffmpeg-input" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Input Path</label>
-                            <input type="text" id="ffmpeg-input" list="bookmarks-list" placeholder="/path/to/input.mp4" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                            <label id="lbl-ffmpeg-input" for="ffmpeg-input">Input Path</label>
+                            <input type="text" id="ffmpeg-input" list="bookmarks-list" placeholder="/path/to/source.mkv">
                         </div>
 
                         <div style="margin-bottom: 15px;">
-                            <label id="lbl-ffmpeg-output" style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Path</label>
-                            <input type="text" id="ffmpeg-output" list="bookmarks-list" placeholder="/path/to/output.mkv" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
+                            <label id="lbl-ffmpeg-output" for="ffmpeg-output">Output Destination</label>
+                            <input type="text" id="ffmpeg-output" list="bookmarks-list" placeholder="/path/to/dest.mp4">
                         </div>
 
                         <div id="batch-ext-container" style="margin-bottom: 15px; display: none;">
-                            <label style="display: block; font-size: 0.85em; margin-bottom: 5px; color: #666;">Output Extension</label>
-                            <select id="ffmpeg-ext" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 4px;">
-                                </select>
+                            <label for="ffmpeg-ext">Target Container Extension</label>
+                            <select id="ffmpeg-ext"></select>
                         </div>
 
                         <div>
-                            <button class="btn" onclick="executeFfmpeg()">Process</button>
-                            <span id="ffmpeg-notify" style="color: #2ecc71; margin-left: 10px; font-weight: bold; opacity: 0; transition: opacity 0.3s;">Task Queued!</span>
+                            <button class="btn btn-primary" onclick="executeFfmpeg()">Queue Transcode</button>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <div id="tab-libraries" style="display: none;">
-            <h3>Folder Libraries</h3>
-            
-            <!-- Grid list of libraries -->
+        <!-- TAB 3: LIBRARIES -->
+        <section id="tab-libraries" style="display: none;">
             <div id="libraries-list-container" class="card">
-                <h4 style="margin-top: 0;">Select a Library</h4>
-                <div id="libraries-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
-                    <!-- Library cards will be rendered here dynamically -->
-                </div>
+                <h4 style="margin-top: 0;">Configured Folder Repositories</h4>
+                <div id="libraries-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;"></div>
             </div>
 
-            <!-- Library detailed sync view (hidden by default) -->
+            <!-- Library detailed sync view -->
             <div id="library-detail-container" class="card" style="display: none;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
                     <div style="display: flex; align-items: center; gap: 15px;">
-                        <button class="btn btn-sm" onclick="showLibrariesList()" style="background: var(--base02); color: var(--cyan); border: 1px solid var(--base01); padding: 6px 12px; cursor: pointer; border-radius: 4px; font-weight: bold;">← Libraries</button>
-                        <h4 style="margin: 0; display: flex; align-items: center;"><span id="library-detail-title">Library Sync Details</span><span id="library-cached-indicator" style="display: none; font-size: 0.65em; background: var(--yellow); color: var(--base03); padding: 3px 6px; border-radius: 4px; font-weight: bold; margin-left: 10px; white-space: nowrap;">Cached</span></h4>
+                        <button class="btn btn-secondary btn-sm" onclick="showLibrariesList()">← Repositories</button>
+                        <h4 style="margin: 0; display: flex; align-items: center;">
+                            <span id="library-detail-title">Repository Synchronization</span>
+                            <span id="library-cached-indicator" style="display: none; font-size: 0.65em; background: var(--status-pending); color: var(--text-inverse); padding: 3px 6px; border-radius: 2px; margin-left: 10px;">Cached</span>
+                        </h4>
                     </div>
-                    <div style="display: flex; gap: 10px; align-items: center;">
-                        <input type="text" id="library-search" oninput="filterLibraryItems()" placeholder="Search library items..." style="padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan); width: 200px;">
-                        <select id="library-status-filter" onchange="filterLibraryItems()" style="padding: 6px 12px; font-size: 0.9em; border: 1px solid var(--base01); border-radius: 4px; background: var(--base03); color: var(--cyan); outline: none; cursor: pointer;">
+                    <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                        <input type="text" id="library-search" oninput="filterLibraryItems()" placeholder="Filter items..." style="width: 180px;">
+                        <select id="library-status-filter" onchange="filterLibraryItems()" style="width: 160px;">
                             <option value="all">All Statuses</option>
                             <option value="synced">Synced / Full-Sync</option>
                             <option value="partial_sync">Partial-Sync</option>
@@ -204,126 +223,150 @@
                             <option value="only_source">Only Source</option>
                             <option value="only_backup">Only Backup</option>
                         </select>
-                        <button id="btn-library-deep-scan" class="btn btn-sm" onclick="triggerLibraryDeepScan()" style="padding: 6px 12px; font-weight: bold; background: var(--yellow) !important; color: var(--base03) !important; border: none;">Deep Sync Scan</button>
+                        <button id="btn-library-deep-scan" class="btn btn-secondary btn-sm" onclick="triggerLibraryDeepScan()">Deep Scan</button>
                     </div>
                 </div>
 
                 <!-- Breadcrumbs -->
-                <div id="library-breadcrumbs" style="padding: 8px 12px; background: var(--base02); border: 1px solid var(--base01); border-radius: 4px; margin-bottom: 15px; font-family: monospace; font-size: 0.9em; display: flex; gap: 8px; align-items: center;">
-                    <!-- Breadcrumbs will be rendered here -->
-                </div>
+                <div id="library-breadcrumbs" style="padding: 8px 12px; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-hud); margin-bottom: 15px; font-family: var(--font-family-mono); font-size: var(--font-size-sm); display: flex; gap: 8px; align-items: center;"></div>
 
                 <!-- File listing table -->
-                <div style="overflow-x: auto;">
-                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.92em;">
+                <div class="table-responsive">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left;">
                         <thead>
-                            <tr style="border-bottom: 2px solid var(--base01); color: var(--base1);">
-                                <th style="padding: 10px; width: auto;">Name</th>
+                            <tr style="border-bottom: 2px solid var(--border-subtle); color: var(--text-secondary);">
+                                <th style="padding: 10px;">Name</th>
                                 <th style="padding: 10px; width: 140px;">Status</th>
                                 <th style="padding: 10px; width: 120px;">Source Size</th>
                                 <th style="padding: 10px; width: 120px;">Backup Size</th>
                                 <th style="padding: 10px; width: 180px; text-align: right;">Action</th>
                             </tr>
                         </thead>
-                        <tbody id="library-items-table-body">
-                            <!-- Items will be rendered here dynamically -->
-                        </tbody>
+                        <tbody id="library-items-table-body"></tbody>
                     </table>
                 </div>
             </div>
-        </div>
+        </section>
+    </main>
 
-    </div>
+    <!-- Mobile Bottom Navigation Bar (<640px) -->
+    <nav class="bottom-nav" aria-label="Mobile Bottom Navigation">
+        <button id="bottom-btn-tasks" class="bottom-nav-btn active" onclick="switchTab('tasks')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            <span>Tasks</span>
+        </button>
+        <button id="bottom-btn-utilities" class="bottom-nav-btn" onclick="switchTab('utilities')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+            <span>Utilities</span>
+        </button>
+        <button id="bottom-btn-libraries" class="bottom-nav-btn" onclick="switchTab('libraries')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>Libraries</span>
+        </button>
+    </nav>
 
-
-    <div id="switchboard-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-        <div class="modal-content" style="background: #fff; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h3 id="sb-modal-title" style="margin: 0; color: #333;">Command Output</h3>
-                <button onclick="closeSwitchboardModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666;">&times;</button>
+    <!-- MODAL: SWITCHBOARD OUTPUT -->
+    <div id="switchboard-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="sb-modal-title">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h4 id="sb-modal-title">Command Output</h4>
+                <button class="close-btn" onclick="closeSwitchboardModal()" aria-label="Close modal">&times;</button>
             </div>
-            <pre id="sb-modal-output" class="log-output" style="max-height: 400px; margin: 0; font-size: 0.9em;"></pre>
+            <div class="modal-body">
+                <pre id="sb-modal-output" class="log-output" style="height: 380px;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeSwitchboardModal()">Dismiss</button>
+            </div>
         </div>
     </div>
-    <datalist id="bookmarks-list"></datalist>
-    <div id="explorer-modal" class="modal-overlay" style="display: none;">
+
+    <!-- MODAL: FILE EXPLORER -->
+    <div id="explorer-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="explorer-title">
         <div class="modal-card">
             <div class="modal-header">
                 <h4 id="explorer-title">Browsing: /</h4>
-                <button class="close-btn" onclick="closeExplorer()">×</button>
+                <button class="close-btn" onclick="closeExplorer()" aria-label="Close explorer">&times;</button>
             </div>
-            
-            <div class="modal-body" id="explorer-list">
-                </div>
-            
+            <div class="modal-body" id="explorer-list"></div>
             <div class="modal-footer">
-                <div class="action-bar" style="flex-wrap: wrap;">
-                    <select id="fs-action-select" onchange="onFsActionChange()" style="width: 200px;">
+                <div class="action-bar" style="display: flex; gap: 10px; width: 100%; flex-wrap: wrap;">
+                    <select id="fs-action-select" onchange="onFsActionChange()" style="flex: 1; min-width: 140px;">
                         <option value="">Select Action...</option>
-                        </select>
-
-                    <select id="fs-remote-server" onchange="onRemoteServerChange()" style="display: none; width: 200px;">
-                        <option value="">Select Target Server...</option>
-                        </select>
-                    
-                    <input type="text" id="fs-dest-path" list="bookmarks-list" placeholder="Destination Path (e.g. /dest/)" style="display: none; flex-grow: 1; min-width: 200px;">
-                    <datalist id="bookmarks-list"></datalist>
-                    <datalist id="remote-bookmarks-list"></datalist>
-                    <button class="btn" onclick="executeFsBatch()" style="white-space: nowrap;">Execute Batch</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div id="process-logs-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-        <div class="modal-content" style="background: #fff; padding: 20px; border-radius: 8px; width: 90%; max-width: 800px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <h3 id="process-logs-title" style="margin: 0; color: #333;">Process Logs</h3>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button id="process-logs-refresh-btn" class="btn btn-sm" style="padding: 4px 8px; font-size: 0.85em;">⟳ Refresh</button>
-                    <button onclick="closeProcessLogsModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; padding: 0 5px;">&times;</button>
-                </div>
-            </div>
-            <pre id="process-logs-output" class="log-output" style="max-height: 500px; overflow-y: auto; margin: 0; font-size: 0.9em; background: #222; color: #eee; padding: 15px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;"></pre>
-        </div>
-    </div>
-    <!-- Media Info & Conversion Modal -->
-    <div id="media-info-modal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000;">
-        <div class="modal-content" style="background: #fff; padding: 20px; border-radius: 8px; width: 95%; max-width: 700px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; max-height: 90vh; color: #333;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
-                <h3 id="media-info-title" style="margin: 0; color: #2c3e50; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 80%; font-size: 1.25em;">Media Details</h3>
-                <button onclick="closeMediaInfoModal()" style="background: none; border: none; font-size: 1.5em; cursor: pointer; color: #666; padding: 0 5px;">&times;</button>
-            </div>
-            
-            <div style="flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; min-height: 0;">
-                <div>
-                    <h4 style="margin: 0 0 10px 0; color: #16a085; font-size: 0.95em; border-bottom: 1px dashed #eee; padding-bottom: 5px;">Stream Information</h4>
-                    <div id="media-info-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; background: #f8f9fa; padding: 12px; border-radius: 4px; font-size: 0.85em; font-family: monospace; color: #333; border: 1px solid #e9ecef;">
-                        <!-- Loaded dynamically -->
-                    </div>
-                </div>
-                
-                <div>
-                    <h4 style="margin: 0 0 10px 0; color: #2980b9; font-size: 0.95em; border-bottom: 1px dashed #eee; padding-bottom: 5px;">Select Target Profile for Conversion</h4>
-                    <div id="media-conversion-profiles" style="display: flex; flex-direction: column; gap: 10px;">
-                        <!-- Loaded dynamically -->
-                    </div>
+                    </select>
+                    <select id="fs-remote-server" onchange="onRemoteServerChange()" style="display: none; flex: 1; min-width: 140px;">
+                        <option value="">Target Remote...</option>
+                    </select>
+                    <input type="text" id="fs-dest-path" list="bookmarks-list" placeholder="Destination Path..." style="display: none; flex: 2; min-width: 160px;">
+                    <button class="btn btn-primary" onclick="executeFsBatch()">Execute Batch</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Auth Overlay (Login / Setup) -->
-    <div id="auth-overlay" class="auth-overlay" style="display: none;">
-        <div class="auth-card">
-            <h2 id="auth-title" style="margin-top: 0; color: var(--cyan);">Login Required</h2>
-            <p id="auth-desc" style="font-size: 0.9em; color: var(--base1); margin-bottom: 20px;">Enter your master password to access Pareo.</p>
-            <form id="auth-form" onsubmit="handleAuthSubmit(event)">
-                <input type="password" id="auth-password" class="auth-input" placeholder="Password" required autocomplete="current-password">
-                <div id="auth-error" style="color: #dc3545; font-size: 0.85em; margin-bottom: 10px; display: none;">Invalid password.</div>
-                <button type="submit" class="auth-btn">Submit</button>
-            </form>
+    <!-- MODAL: PROCESS LOGS -->
+    <div id="process-logs-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="process-logs-title">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h4 id="process-logs-title">Process Logs</h4>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button id="process-logs-refresh-btn" class="btn btn-secondary btn-sm">⟳ Refresh</button>
+                    <button class="close-btn" onclick="closeProcessLogsModal()" aria-label="Close process logs">&times;</button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <pre id="process-logs-output" class="log-output" style="height: 420px;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeProcessLogsModal()">Close</button>
+            </div>
         </div>
     </div>
-    <script src="app.js?v=1.2"></script>
+
+    <!-- MODAL: MEDIA INFO & CONVERSION -->
+    <div id="media-info-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="media-info-title">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h4 id="media-info-title">Media Details</h4>
+                <button class="close-btn" onclick="closeMediaInfoModal()" aria-label="Close media info">&times;</button>
+            </div>
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 20px;">
+                <div>
+                    <h5 style="color: var(--accent-primary); margin-bottom: 8px;">Stream Metadata</h5>
+                    <div id="media-info-details" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; background: var(--bg-input); padding: 12px; border-radius: var(--radius-hud); font-family: var(--font-family-mono); font-size: var(--font-size-xs); border: 1px solid var(--border-subtle);"></div>
+                </div>
+                <div>
+                    <h5 style="color: var(--accent-secondary); margin-bottom: 8px;">Target Transcode Profiles</h5>
+                    <div id="media-conversion-profiles" style="display: flex; flex-direction: column; gap: 10px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeMediaInfoModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: NON-BLOCKING CONFIRM & PROMPT DIALOG -->
+    <div id="dialog-modal" class="modal-overlay" style="display: none;" role="dialog" aria-modal="true">
+        <div class="modal-card" style="max-width: 480px;">
+            <div class="modal-header">
+                <h4 id="dialog-modal-title">Confirm Action</h4>
+                <button class="close-btn" onclick="closeAppDialog(false)" aria-label="Close dialog">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="dialog-modal-message" style="margin-bottom: 12px;"></p>
+                <input type="text" id="dialog-modal-input" style="display: none;">
+            </div>
+            <div class="modal-footer">
+                <button id="dialog-modal-cancel" class="btn btn-secondary" onclick="closeAppDialog(false)">Cancel</button>
+                <button id="dialog-modal-confirm" class="btn btn-primary" onclick="closeAppDialog(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="bookmarks-list"></datalist>
+    <datalist id="remote-bookmarks-list"></datalist>
+
+    <script src="app.js?v=2.0"></script>
 </body>
 </html>
