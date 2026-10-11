@@ -1,39 +1,57 @@
 # Specification: Pareo V2 - Modernized Asynchronous Command & Orchestration Engine
 
-**Document Version:** 2.2.0-MVP2-SPEC  
+**Document Version:** 2.3.0-BASELINE-MVP2  
 **Author:** Lead Systems Analyst & Agile Product Owner  
-**Status:** Approved for Implementation (MVP 2 Target) — **Handoff to Coder to implement MVP 2.**  
+**Status:** MVP 2 Verified & Baselined (77/77 Tests Passing) -> Preparing MVP 3 Specification  
 **Target Architecture:** FastAPI Async Backend + SQLite WAL + Vanilla ES6+ SPA / PWA (SSE Streaming)  
 
 ---
 
-## 1. Executive Summary & MVP 2 Mission
+## 1. Executive Summary & Baselined Progress
 
 **Pareo** is an asynchronous, configuration-driven command orchestration and system execution engine engineered for Local Area Network (LAN) infrastructure, home servers, and distributed edge nodes. It bridges the gap between raw POSIX command-line interfaces and client-side web interactions by transforming resource-intensive terminal workloads—such as high-definition FFMPEG video transcoding, bidirectional remote filesystem synchronization, batch torrent downloads, and sibling application process supervision—into non-blocking, managed, recoverable, and observable background pipelines.
 
-Following the successful verification and release of **MVP 1 (v2.0.0-mvp1)**—which established the non-blocking asynchronous subprocess core, SQLite WAL indexing, real-time Server-Sent Events (SSE) bus, and two bespoke signature themes (*Sony's Wipeout* and *Fallout Atompunk*) with 44/44 automated tests passing—**Pareo V2 enters MVP 2**.
-
-### MVP 2 Primary Objectives:
-1. **Identity & Security Layer:** Replace the temporary no-auth testing mode with production-grade email-based authentication (PBKDF2-HMAC-SHA256 with 100k iterations, 16-byte random salt), persistent SQLite session store, and Role-Based Access Control (`Admin`, `Operator`, `Viewer`).
-2. **Host & Queue Telemetry Engine:** Deliver live host infrastructure telemetry (CPU load averages, RAM percentage, filesystem disk usage across allowed roots) and worker slot saturation metrics broadcast every 2 seconds over SSE.
-3. **Interactive Batch Queue Controls:** Enable multi-select task operations with a persistent bottom action dock for batch Cancel, Retry, and Purge actions.
-4. **Cross-Platform Progressive Web App (PWA):** Transform the frontend into an installable, mobile-optimized PWA for iOS and Android featuring `manifest.json`, `sw.js` app-shell caching, safe-area inset adaptation for notch/Dynamic Island devices, native-feeling bottom sheets, and haptic feedback.
+Following the successful implementation, testing, and verification of **MVP 2 (v2.0.0-mvp2)**—which delivered email-based authentication, RBAC authorization, host & queue telemetry, interactive batch queue controls, and cross-platform PWA support for iOS and Android with 77/77 automated tests passing—**Pareo V2 prepares for MVP 3**.
 
 ---
 
-## 2. Current Baseline: Pareo V2.0.0-MVP1 (Released & Verified)
+## 2. Current Baseline: Pareo V2.0.0-MVP2 (Released & Verified)
 
-### 2.1 Verified Production Baseline (Post-MVP 1)
-The following capabilities were implemented and validated with 44/44 passing automated tests:
-- **Port 9046 Default Binding:** Bound to `0.0.0.0:9046` across `run.py`, `run.sh`, and `pareo.service`, with dynamic override via the `PORT` environment variable.
-- **Frictionless Local Execution Core:** Clean modular backend (`server.py`, `executor.py`, `database.py`, `broadcaster.py`, `task_runner.py`).
-- **Async Non-Blocking Subprocess Core:** Subprocess operations execute via `run_async_subprocess()` / `asyncio.create_subprocess_exec` with explicit timeouts and process-group cleanup (`killpg`); zero single-thread event loop blocking during SSH or `ffprobe`.
-- **Database Indexing & WAL PRAGMAs:** SQLite B-Tree indices (`idx_tasks_status`, `idx_tasks_queue_status`, `idx_tasks_start_time`) active alongside WAL mode, `synchronous=NORMAL`, `busy_timeout=5000`, and `wal_autocheckpoint=1000`.
-- **Dynamic Path Portability & Input Bounds:** `BASE_DIR = Path(__file__).resolve().parent` eliminates hardcoded paths; `is_safe_path_string()` guards against newlines, control characters, and buffer overflows (preventing syscall crashes per lessons learned).
-- **Real-Time SSE Bus (`GET /api/stream/events`):** Singleton `broadcaster.py` pushes `task_update`, `task_output`, and `task_counts` with drop-oldest queue overflow guards, completely retiring browser HTTP polling loops.
-- **Bespoke Dual-Theme UI System:** Native CSS token implementation for "Sony's Wipeout" (`data-theme="wipeout"`) and "Fallout Atompunk" (`data-theme="fallout-pipboy"`), persistent in `localStorage`.
-- **Responsive Ergonomics:** Mobile card conversion (`.task-card`), thumb-zone bottom navigation bar, >=44px touch targets, accessible non-blocking toasts (`showToast()`), and terminal auto-scroll lock.
-- **Release Verification:** Released as `v2.0.0-mvp1` with all 44 automated regression tests passing.
+### 2.1 Verified Production Baseline (Post-MVP 2 - v2.0.0-mvp2)
+The system currently operates with the following verified production capabilities (77/77 automated tests passing):
+- **Email-Based Authentication & User Accounts:**
+  - `users` table persisting `user_id`, `email`, `password_hash`, `salt`, `role`, `created_at`, `last_login`, and `is_active`.
+  - Passwords hashed with PBKDF2-HMAC-SHA256 (100,000 iterations minimum, 16-byte random salt, constant-time `hmac.compare_digest` verification).
+  - First-run wizard provisions initial Admin user via `POST /api/auth/setup-admin`.
+  - Zero-user fallback mode allows frictionless initial local setup before any users are provisioned.
+  - Endpoints: `/api/auth/status`, `/api/auth/setup-admin`, `/api/auth/register`, `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`.
+- **Persistent Session Token Store:**
+  - SQLite `sessions` table storing secure tokens (`secrets.token_urlsafe(32)`) with TTL expiration (48 hours), automatic cleanup, and explicit logout revocation.
+- **Role-Based Access Control (RBAC):**
+  - Roles: `Admin` (full system permissions), `Operator` (task queuing/sync/batch actions), `Viewer` (read-only monitoring).
+  - FastAPI dependency route enforcement: mutations return HTTP 403 Forbidden for insufficient roles; UI dynamically hides or disables unauthorized action buttons.
+- **Host & Queue Telemetry Engine:**
+  - Real-time background collector sampling CPU load averages (1m, 5m, 15m), per-core utilization %, RAM usage from `/proc/meminfo`, filesystem disk usage via `os.statvfs` across `allowed_roots`, and worker slot saturation per queue (`media`, `fs`, `network`, `default`).
+  - Endpoint `GET /api/telemetry` and SSE broadcast channel streaming `telemetry` events every 2.0 seconds.
+  - Frontend micro-gauges and expandable telemetry panels styled for both *Sony's Wipeout* (HUD tachometers) and *Fallout Pip-Boy* (analog needle/ASCII dials).
+- **Interactive Batch Queue Controls:**
+  - Accessible multi-select checkboxes on mobile cards and desktop table rows with "Select All" toggle.
+  - Floating bottom action dock (`.batch-action-dock`) with selected counter badge and actions: Batch Cancel, Batch Retry, Batch Purge.
+  - Backend endpoints: `/api/tasks/batch/cancel`, `/api/tasks/batch/retry`, `/api/tasks/batch/purge`.
+- **Cross-Platform Progressive Web App (PWA):**
+  - Web App Manifest (`manifest.json`) supporting standalone display, dynamic theme color, and adaptive PNG icons (192x192, 512x512).
+  - Service Worker (`sw.js`) providing Cache-First app shell caching, dynamic network pass-through for API and SSE streams, and offline detection.
+  - iOS Optimizations: Apple touch meta tags, safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`), touch-draggable bottom sheets, `overscroll-behavior-y: contain`.
+  - Android Optimizations: `beforeinstallprompt` header install banner and haptic feedback (`navigator.vibrate([15])`).
+- **Core Asynchronous Infrastructure (from MVP 1):**
+  - Port 9046 binding on `0.0.0.0` with `PORT` environment variable support.
+  - Non-blocking async subprocess execution (`run_async_subprocess`, `asyncio.create_subprocess_exec`).
+  - Database WAL mode, B-Tree indices (`idx_tasks_status`, `idx_tasks_queue_status`, `idx_tasks_start_time`, `idx_users_email`, `idx_sessions_expires_at`).
+  - Dynamic path resolution (`BASE_DIR`) and `is_safe_path_string()` guards.
+  - Bespoke dual themes: "Sony's Wipeout" (`data-theme="wipeout"`) and "Fallout Atompunk" (`data-theme="fallout-pipboy"`).
+
+### 2.2 Historical Baseline Context (MVP 1 Baseline)
+- Prior to MVP 2, MVP 1 delivered the initial async core, SQLite indices, real-time SSE stream bus, dual themes, and responsive mobile card layout with 44/44 tests passing. All 44 tests continue to pass 100% without regression.
 
 ---
 
@@ -404,59 +422,86 @@ Per `/global_knowledge/lessons_learned.md`:
 
 ---
 
-## 8. Acceptance Criteria & Verification Matrix for MVP 2
+## 8. Acceptance Criteria & Verification Matrix for MVP 2 (VERIFIED & BASELINED)
+
+All 77 automated regression and feature tests in `tests/` pass with zero failures:
 
 ### 8.1 Email Authentication & User Management
-- [ ] Database contains `users` and `sessions` tables with proper B-Tree indices (`idx_users_email`, `idx_sessions_expires_at`).
-- [ ] Passwords stored using PBKDF2-HMAC-SHA256 with >= 100,000 iterations and 16-byte random salt.
-- [ ] Constant-time verification implemented using `hmac.compare_digest`.
-- [ ] `GET /api/auth/status` detects first-run state (`initialized: false` when 0 users exist).
-- [ ] `POST /api/auth/setup-admin` securely provisions the initial Admin user.
-- [ ] `POST /api/auth/register` creates user accounts with default role assignment.
-- [ ] `POST /api/auth/login` verifies credentials, creates active session, and returns bearer token.
-- [ ] `POST /api/auth/logout` invalidates active session.
-- [ ] `GET /api/auth/me` returns current user profile and role.
-- [ ] Expired or invalid session tokens return HTTP 401.
+- [x] Database contains `users` and `sessions` tables with proper B-Tree indices (`idx_users_email`, `idx_sessions_expires_at`). *(Verified in `tests/test_auth.py::test_user_creation_and_session_lifecycle`)*
+- [x] Passwords stored using PBKDF2-HMAC-SHA256 with >= 100,000 iterations and 16-byte random salt. *(Verified in `tests/test_auth.py::test_password_hashing`)*
+- [x] Constant-time verification implemented using `hmac.compare_digest`. *(Verified)*
+- [x] `GET /api/auth/status` detects first-run state (`initialized: false` when 0 users exist). *(Verified in `tests/test_auth.py::test_frictionless_fallback_when_zero_users`)*
+- [x] `POST /api/auth/setup-admin` securely provisions the initial Admin user. *(Verified in `tests/test_auth.py::test_auth_endpoints_flow`)*
+- [x] `POST /api/auth/register` creates user accounts with default role assignment. *(Verified)*
+- [x] `POST /api/auth/login` verifies credentials, creates active session, and returns bearer token. *(Verified)*
+- [x] `POST /api/auth/logout` invalidates active session. *(Verified)*
+- [x] `GET /api/auth/me` returns current user profile and role. *(Verified)*
+- [x] Expired or invalid session tokens return HTTP 401. *(Verified in `tests/test_auth.py::test_session_token_expiry_and_cleanup`)*
 
 ### 8.2 Role-Based Access Control (RBAC)
-- [ ] Route handlers enforce role requirements:
-  - `Admin`: Full access to execution, processes, configuration, and batch actions.
-  - `Operator`: Full access to task execution and batch actions; restricted from process supervision termination.
-  - `Viewer`: Read-only access to dashboard, tasks, logs, telemetry; blocked from submitting, retrying, cancelling, or purging tasks (HTTP 403).
-- [ ] UI dynamically hides or disables restricted actions based on `current_user.role`.
+- [x] Route handlers enforce role requirements:
+  - `Admin`: Full access to execution, processes, configuration, and batch actions. *(Verified in `tests/test_mvp2.py::test_mvp2_rbac_matrix`)*
+  - `Operator`: Full access to task execution and batch actions; restricted from process supervision termination. *(Verified)*
+  - `Viewer`: Read-only access to dashboard, tasks, logs, telemetry; blocked from submitting, retrying, cancelling, or purging tasks (HTTP 403). *(Verified in `tests/test_batch_queue.py::test_batch_operations_rbac_enforcement`)*
+- [x] UI dynamically hides or disables restricted actions based on `current_user.role`. *(Verified)*
 
 ### 8.3 Host & Queue Telemetry Engine
-- [ ] `GET /api/telemetry` returns CPU load averages, per-core CPU %, RAM %, storage per root, and queue slot saturation.
-- [ ] SSE stream (`/api/stream/events`) broadcasts `telemetry` event every 2.0 seconds.
-- [ ] Frontend displays live telemetry gauges in both "Sony's Wipeout" and "Fallout Pip-Boy" themes.
-- [ ] Host resource inspection handles missing `/proc` entries gracefully without crashing on non-Linux OS.
+- [x] `GET /api/telemetry` returns CPU load averages, per-core CPU %, RAM %, storage per root, and queue slot saturation. *(Verified in `tests/test_telemetry.py::test_api_telemetry_endpoint`)*
+- [x] SSE stream (`/api/stream/events`) broadcasts `telemetry` event every 2.0 seconds. *(Verified in `tests/test_telemetry.py::test_sse_telemetry_broadcast`)*
+- [x] Frontend displays live telemetry gauges in both "Sony's Wipeout" and "Fallout Pip-Boy" themes. *(Verified in `tests/test_mvp2.py::test_mvp2_telemetry_engine`)*
+- [x] Host resource inspection handles missing `/proc` entries gracefully without crashing on non-Linux OS. *(Verified in `tests/test_telemetry.py::test_missing_proc_fallback`)*
 
 ### 8.4 Interactive Batch Queue Controls
-- [ ] Task cards (mobile) and rows (desktop) feature accessible multi-select checkboxes.
-- [ ] Floating/sticky bottom action dock displays selected count and action buttons.
-- [ ] `POST /api/tasks/batch/cancel` cancels all selected tasks in a single request.
-- [ ] `POST /api/tasks/batch/retry` retries all selected failed/cancelled tasks.
-- [ ] `POST /api/tasks/batch/purge` purges all selected finished tasks.
-- [ ] Batch actions trigger clear feedback toasts and update UI immediately without full page reloads.
+- [x] Task cards (mobile) and rows (desktop) feature accessible multi-select checkboxes. *(Verified in `tests/test_mvp2.py::test_mvp2_batch_queue_operations`)*
+- [x] Floating/sticky bottom action dock displays selected count and action buttons. *(Verified in `tests/test_pwa.py::test_batch_action_dock_touch_targets`)*
+- [x] `POST /api/tasks/batch/cancel` cancels all selected tasks in a single request. *(Verified in `tests/test_batch_queue.py::test_batch_api_endpoints`)*
+- [x] `POST /api/tasks/batch/retry` retries all selected failed/cancelled tasks. *(Verified)*
+- [x] `POST /api/tasks/batch/purge` purges all selected finished tasks. *(Verified in `tests/test_batch_queue.py::test_database_batch_cancel_and_purge`)*
+- [x] Batch actions trigger clear feedback toasts and update UI immediately without full page reloads. *(Verified)*
 
 ### 8.5 Cross-Platform PWA for iOS & Android
-- [ ] Valid `manifest.json` served at `/static/manifest.json` with standalone mode, dynamic theme color, and icons.
-- [ ] Service worker `sw.js` registered and active, caching static app shell assets.
-- [ ] Dynamic API and SSE streams bypass cache for live real-time updates.
-- [ ] iOS viewports support `viewport-fit=cover` and notch/Dynamic Island safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`).
-- [ ] Mobile modals render as touch-draggable bottom sheets with `overscroll-behavior-y: contain`.
-- [ ] Android install prompt event (`beforeinstallprompt`) captured with header install banner.
-- [ ] Haptic feedback (`navigator.vibrate`) triggers on key user actions on supported mobile devices.
+- [x] Valid `manifest.json` served at `/static/manifest.json` with standalone mode, dynamic theme color, and icons. *(Verified in `tests/test_pwa.py::test_pwa_manifest_exists_and_valid`)*
+- [x] Service worker `sw.js` registered and active, caching static app shell assets. *(Verified in `tests/test_pwa.py::test_service_worker_file`, `test_service_worker_registration_in_frontend`)*
+- [x] Dynamic API and SSE streams bypass cache for live real-time updates. *(Verified)*
+- [x] iOS viewports support `viewport-fit=cover` and notch/Dynamic Island safe-area insets (`env(safe-area-inset-top)`, `env(safe-area-inset-bottom)`). *(Verified in `tests/test_pwa.py::test_index_html_pwa_and_ios_meta_tags`, `test_style_css_safe_area_and_dock`)*
+- [x] Mobile modals render as touch-draggable bottom sheets with `overscroll-behavior-y: contain`. *(Verified)*
+- [x] Android install prompt event (`beforeinstallprompt`) captured with header install banner. *(Verified)*
+- [x] Haptic feedback (`navigator.vibrate`) triggers on key user actions on supported mobile devices. *(Verified)*
 
 ### 8.6 Regression Test Verification
-- [ ] All 44 automated tests from MVP 1 pass with zero regressions.
-- [ ] New automated unit and integration tests added in `tests/test_auth.py`, `tests/test_telemetry.py`, `tests/test_batch_queue.py`, and `tests/test_pwa.py`.
-- [ ] Total test suite passes cleanly with `pytest -v`.
+- [x] All 44 automated tests from MVP 1 pass with zero regressions. *(Verified across full test run)*
+- [x] New automated unit and integration tests added in `tests/test_auth.py`, `tests/test_telemetry.py`, `tests/test_batch_queue.py`, `tests/test_pwa.py`, and `tests/test_mvp2.py`. *(Verified)*
+- [x] Total test suite of 77 tests passes cleanly with `pytest -v` in under 50 seconds. *(Verified: 77 passed)*
 
 ---
 
-## 9. Formal Handoff Declaration
+## 9. Scoping for Next Iteration: MVP 3 (Virtualized Streaming Terminal & Resilient Process Supervisor)
 
-**Handoff to Coder to implement MVP 2.**
+With MVP 1 (foundation, async core, SSE hub, dual themes) and MVP 2 (email auth, sessions, RBAC, telemetry, batch queue controls, cross-platform PWA) verified and baselined, the engineering roadmap transitions to **MVP 3**:
 
-The Lead Systems Analyst & Agile Product Owner has completed the system analysis, finalized the comprehensive MVP 2 specification, updated living project documentation, and established the acceptance criteria matrix. The Coder agent is authorized to begin implementation of MVP 2.
+### 9.1 MVP 3 Primary Objectives
+1. **Virtualized High-Performance Streaming Log Terminal:**
+   - Real-time DOM virtualization capable of displaying 100,000+ log lines at 60 FPS without memory leaks or scroll stutter.
+   - Dual-buffer rendering engine: off-screen ring buffer for incoming chunks, on-screen viewport window for visible lines.
+   - Auto-scroll lock control with visual paused indicator chip and sticky jump-to-bottom action.
+   - Dedicated raw log export button for downloading complete log files (`logs/tasks/{task_id}.log`) and quick copy-to-clipboard.
+2. **In-Terminal Search & Log Level Filtering:**
+   - Real-time client-side regex search with highlighted search matches.
+   - Dynamic log level parsing: color-coded tagging for `INFO`, `WARN`, `ERROR`, and `DEBUG` entries across both *Sony's Wipeout* and *Fallout Pip-Boy* palettes.
+   - Filter chips to isolate errors or warnings during long-running builds, downloads, or transcodes.
+3. **Resilient Local Process Supervisor:**
+   - Supervision of local background microservices (`Numera Engine`, `Stelata Engine`, `Papyro Engine`) with automated crash detection.
+   - Configurable restart policies in `config.json`:
+     - `policy: "on-failure"` / `"always"` / `"never"`.
+     - `max_retries`: Maximum automated restart attempts within a time window.
+     - `backoff_delay_sec`: Exponential backoff delay to prevent crash-loop CPU spin.
+   - Automatic port conflict eviction: if a monitored service dies holding a socket, clean eviction via `fuser -k` or POSIX session signaling prior to restart.
+   - Service health check probes (TCP socket connect / HTTP `/health` probe).
+4. **Live Process Log Streaming over SSE:**
+   - Dedicated SSE channel (`GET /api/processes/{name}/stream` or `process_output` event over main bus) pushing live log stdout/stderr lines to the UI without reverse file seek polling loops.
+
+---
+
+*Authored by: Lead Systems Analyst & Agile Product Owner*  
+*Baseline: MVP 2 Completed & Verified (77/77 Tests Passing)*  
+*Next Phase: MVP 3 Implementation*

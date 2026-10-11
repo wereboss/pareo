@@ -97,7 +97,7 @@ python3 -c "import database; database.init_db(); print('DB Initialized successfu
 - Interactive batch queue management (batch cancel, retry, purge) with bottom action dock.
 - Task duration analytics and failure breakdown.
 - Truly responsive Progressive Web App (PWA) for iOS and Android: Web App Manifest, Service Worker offline caching, safe-area insets (`env(safe-area-inset-*)`), and native install prompt.
-- 59/59 automated tests passing.
+- 77/77 automated tests passing.
 
 ---
 

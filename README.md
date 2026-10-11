@@ -51,18 +51,18 @@ Tasks within each queue run sequentially to protect hardware resources, while se
 *   **"Fallout game's Atompunk":** Inspired by RobCo Industries Pip-Boy 3000 CRT terminals. Features glowing phosphor green (`#1aff80`) on deep vacuum tube black/olive (`#050b07`), subtle horizontal CRT scanlines, ambient phosphor bloom glow, analog meters, and vintage monospace readouts.
 *   **Responsive Layout:** Automatically transforms into a mobile card view (<640px) with thumb-zone bottom navigation and >=44px touch targets.
 
-### 5. Interactive Utilities & Switchboard
+### 8. Interactive Utilities & Switchboard
 *   **System Switchboard:** A physical-like grid of immediate execution buttons (e.g., check server uptime, check disk usage, start/stop a VPN). Supports:
     *   *Standard Execution:* Runs the shell command and displays the terminal output directly in an overlay modal.
     *   *Detached Execution:* Spawns an independent OS process (fire-and-forget) that runs in a new session without blocking the engine or logging outputs.
 *   **Generic Task Cards:** Templated inputs defined in `config.json` that render customized forms in the UI. When submitted, they resolve inputs into template variables, compile the final command, and route them to their designated execution queue.
 
-### 6. Interactive File Manager & Bookmarks
+### 9. Interactive File Manager & Bookmarks
 *   **Directory Browser:** A modal-based explorer that communicates with local/remote nodes.
 *   **Bookmarks & Auto-complete:** Paths configured in `config.json` are exposed to the UI as suggestions to simplify path entry.
 *   **Configurable Batch Actions:** Perform commands (Copy, Move, Compress, etc.) on multiple selected files. The interface dynamically reads `config.json` to show/hide destination inputs depending on the requirements of the selected action.
 
-### 7. Local Process Monitor
+### 10. Local Process Monitor
 *   **Independent Daemon Control:** Start, stop, or force-kill server processes configured in `config.json`. Spawns processes in a detached session (`start_new_session=True`) to run independently of Pareo.
 *   **Port & Process Status:** Inspects listening sockets (`lsof` or `ss`) to verify status, adopt running PIDs, and retrieve details, ensuring the UI remains perfectly in sync without memory state dependency.
 *   **Live Log Streaming:** Access and refresh live console tailing files directly from the UI logs modal overlay.
