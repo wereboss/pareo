@@ -378,3 +378,56 @@ async def stop_workers():
         await asyncio.gather(*active_workers, return_exceptions=True)
         active_workers.clear()
     print("[*] All background workers stopped.")
+
+def get_queue_metrics() -> dict:
+    """Returns queue saturation, active worker counts, and pending depth per queue."""
+    metrics = {}
+    for q_name, q in task_queues.items():
+        limit = get_queue_concurrency(q_name)
+        active = 0
+        try:
+            with database.get_conn() as conn:
+                cur = conn.execute(
+                    "SELECT COUNT(*) as cnt FROM tasks WHERE queue_name = ? AND status = 'Running'",
+                    (q_name,)
+                )
+                row = cur.fetchone()
+                if row:
+                    active = row["cnt"]
+        except Exception:
+            active = 0
+        pending = q.qsize()
+        sat_pct = round((active / limit) * 100, 1) if limit > 0 else 0.0
+        metrics[q_name] = {
+            "active": active,
+            "pending": pending,
+            "limit": limit,
+            "saturation_pct": sat_pct
+        }
+    return metrics
+
+async def batch_cancel_tasks(task_ids: list) -> list:
+    """Cancels multiple tasks, terminating running process groups and updating statuses."""
+    cancelled = []
+    for tid in task_ids:
+        try:
+            if await cancel_task(tid):
+                cancelled.append(tid)
+        except Exception:
+            pass
+    return cancelled
+
+async def batch_retry_tasks(task_ids: list) -> list:
+    """Retries multiple failed or cancelled tasks."""
+    retried = []
+    for tid in task_ids:
+        try:
+            if await retry_task(tid):
+                retried.append(tid)
+        except Exception:
+            pass
+    return retried
+
+async def batch_purge_tasks(task_ids: list) -> list:
+    """Purges multiple finished or cancelled tasks from the database."""
+    return database.batch_purge_tasks(task_ids)

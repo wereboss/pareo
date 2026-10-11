@@ -35,6 +35,99 @@ let currentLibrarySourceServer = "";
 let currentLibraryBackupBase = "";
 let currentLibraryBackupServer = "";
 
+// Global Auth & Token Management (MVP 2)
+let currentUser = null; // { user_id, email, role, token }
+
+function getAuthToken() {
+    return localStorage.getItem('pareo_auth_token') || '';
+}
+
+function setAuthToken(token) {
+    if (token) {
+        localStorage.setItem('pareo_auth_token', token);
+    } else {
+        localStorage.removeItem('pareo_auth_token');
+    }
+}
+
+// Global transparent fetch interceptor ensuring Bearer token is attached
+const originalFetch = window.fetch;
+window.fetch = async function(resource, init = {}) {
+    init.headers = init.headers || {};
+    const token = getAuthToken();
+    if (token) {
+        if (init.headers instanceof Headers) {
+            if (!init.headers.has('Authorization')) init.headers.set('Authorization', `Bearer ${token}`);
+        } else if (Array.isArray(init.headers)) {
+            init.headers.push(['Authorization', `Bearer ${token}`]);
+        } else {
+            if (!init.headers['Authorization']) init.headers['Authorization'] = `Bearer ${token}`;
+        }
+    }
+    const response = await originalFetch(resource, init);
+    const urlStr = typeof resource === 'string' ? resource : (resource.url || '');
+    if (response.status === 401 && !urlStr.includes('/api/auth/status') && !urlStr.includes('/api/auth/login') && !urlStr.includes('/api/auth/setup-admin')) {
+        currentUser = null;
+        updateUserUI();
+        openAuthModal('login');
+    }
+    return response;
+};
+
+// Batch Task Selection State (MVP 2)
+const selectedTaskIds = new Set();
+
+// Haptic Feedback Integration
+function triggerHaptic(duration = 15) {
+    if ('vibrate' in navigator) {
+        try { navigator.vibrate(duration); } catch (e) {}
+    }
+}
+
+// PWA Installation & Service Worker Integration
+let deferredInstallPrompt = null;
+function initPWA() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/static/sw.js').catch(err => {
+                console.warn('[PWA] Service worker registration failed:', err);
+            });
+        });
+    }
+
+    window.addEventListener('online', () => {
+        const banner = document.getElementById('offline-banner');
+        if (banner) banner.style.display = 'none';
+        showToast('Network restored - Reconnected', 'success');
+    });
+
+    window.addEventListener('offline', () => {
+        const banner = document.getElementById('offline-banner');
+        if (banner) banner.style.display = 'block';
+        showToast('Network disconnected - Offline mode', 'warning');
+    });
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredInstallPrompt = e;
+        const btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = 'inline-flex';
+    });
+}
+
+function promptInstallPwa() {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+            showToast('App installed successfully!', 'success');
+        }
+        deferredInstallPrompt = null;
+        const btn = document.getElementById('btn-install-app');
+        if (btn) btn.style.display = 'none';
+    });
+}
+
 // Auto-Scroll Interlock State Map: taskId -> { locked: boolean, userScrolled: boolean }
 const terminalScrollState = new Map();
 
@@ -261,9 +354,17 @@ function hideLoading() {
 // --------------------------------------------------------------------------
 // REAL-TIME SERVER-SENT EVENTS (SSE) BUS INTEGRATION
 // --------------------------------------------------------------------------
+let globalEvtSource = null;
+
 function initEventStream() {
+    if (globalEvtSource) {
+        globalEvtSource.close();
+    }
     console.log('[SSE] Connecting to real-time events stream...');
-    const evtSource = new EventSource('/api/stream/events');
+    const token = getAuthToken();
+    const streamUrl = token ? `/api/stream/events?token=${encodeURIComponent(token)}` : '/api/stream/events';
+    const evtSource = token ? new EventSource(streamUrl) : new EventSource('/api/stream/events');
+    globalEvtSource = evtSource;
     
     evtSource.addEventListener('connected', () => {
         console.log('[SSE] Stream connected successfully.');
@@ -295,10 +396,92 @@ function initEventStream() {
             console.error('[SSE] Error handling task_counts:', err);
         }
     });
+
+    evtSource.addEventListener('telemetry', (e) => {
+        try {
+            const tele = JSON.parse(e.data);
+            handleTelemetryUpdate(tele);
+        } catch (err) {
+            console.error('[SSE] Error handling telemetry:', err);
+        }
+    });
     
     evtSource.onerror = (err) => {
         console.warn('[SSE] Connection error. EventSource will reconnect automatically...', err);
     };
+}
+
+async function fetchInitialTelemetry() {
+    try {
+        const res = await fetch('/api/telemetry');
+        if (res.ok) {
+            const data = await res.json();
+            handleTelemetryUpdate(data);
+        }
+    } catch (e) {}
+}
+
+function handleTelemetryUpdate(data) {
+    if (!data) return;
+    
+    // CPU
+    if (data.cpu) {
+        const cpuPct = data.cpu.utilization_pct || 0;
+        const cpuFill = document.getElementById('tele-cpu-fill');
+        const cpuVal = document.getElementById('tele-cpu-val');
+        const cardCpuVal = document.getElementById('tele-card-cpu-val');
+        const cardCpuSub = document.getElementById('tele-card-cpu-sub');
+        if (cpuFill) cpuFill.style.width = `${Math.min(100, Math.max(0, cpuPct))}%`;
+        if (cpuVal) cpuVal.textContent = `${cpuPct.toFixed(1)}%`;
+        if (cardCpuVal) cardCpuVal.textContent = `${cpuPct.toFixed(1)}%`;
+        if (cardCpuSub) cardCpuSub.textContent = `Load: ${data.cpu.load_1m} / ${data.cpu.load_5m} / ${data.cpu.load_15m} (Cores: ${data.cpu.cores})`;
+    }
+    
+    // RAM
+    if (data.memory) {
+        const ramPct = data.memory.utilization_pct || 0;
+        const ramFill = document.getElementById('tele-ram-fill');
+        const ramVal = document.getElementById('tele-ram-val');
+        const cardRamVal = document.getElementById('tele-card-ram-val');
+        const cardRamSub = document.getElementById('tele-card-ram-sub');
+        if (ramFill) ramFill.style.width = `${Math.min(100, Math.max(0, ramPct))}%`;
+        if (ramVal) ramVal.textContent = `${ramPct.toFixed(1)}%`;
+        if (cardRamVal) cardRamVal.textContent = `${ramPct.toFixed(1)}%`;
+        if (cardRamSub) cardRamSub.textContent = `Used: ${data.memory.used_mb} MB / ${data.memory.total_mb} MB`;
+    }
+
+    // Queues
+    if (data.queues) {
+        let totalActive = 0;
+        let totalLimit = 0;
+        let subDetails = [];
+        for (const [qName, qStats] of Object.entries(data.queues)) {
+            totalActive += qStats.active || 0;
+            totalLimit += qStats.limit || 0;
+            subDetails.push(`${qName.toUpperCase()}: ${qStats.active}/${qStats.limit}`);
+        }
+        const slotsVal = document.getElementById('tele-slots-val');
+        const cardQueuesVal = document.getElementById('tele-card-queues-val');
+        const cardQueuesSub = document.getElementById('tele-card-queues-sub');
+        if (slotsVal) slotsVal.textContent = `SLOTS: ${totalActive}/${totalLimit}`;
+        if (cardQueuesVal) cardQueuesVal.textContent = `${totalActive} / ${totalLimit}`;
+        if (cardQueuesSub) cardQueuesSub.textContent = subDetails.join(' | ');
+    }
+
+    // Disk
+    if (data.disk && data.disk.length > 0) {
+        const primary = data.disk[0];
+        const cardDiskVal = document.getElementById('tele-card-disk-val');
+        const cardDiskSub = document.getElementById('tele-card-disk-sub');
+        if (cardDiskVal) cardDiskVal.textContent = `${primary.utilization_pct.toFixed(1)}%`;
+        if (cardDiskSub) cardDiskSub.textContent = `Free: ${primary.free_gb} GB / ${primary.total_gb} GB (${primary.path})`;
+    }
+}
+
+function toggleTelemetryDetail() {
+    const grid = document.getElementById('telemetry-detail-grid');
+    if (!grid) return;
+    grid.style.display = grid.style.display === 'none' ? 'grid' : 'none';
 }
 
 function updateHeaderTicker(ongoing, pending) {
@@ -332,6 +515,9 @@ function updateTaskInUI(task) {
     if (row) {
         const badge = row.querySelector('.status-badge');
         if (badge) updateTaskBadge(badge, task);
+        
+        const chk = row.querySelector('.task-checkbox');
+        if (chk) chk.checked = selectedTaskIds.has(task.task_id);
         
         const timeline = row.querySelector('.task-timeline');
         if (timeline) {
@@ -581,7 +767,7 @@ function renderTasks(tasks) {
     }
 
     if (taskList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 30px;">No tasks found matching the selected filters.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">No tasks found matching the selected filters.</td></tr>`;
         const cardContainer = document.getElementById('tasks-card-container');
         if (cardContainer) {
             cardContainer.innerHTML = `<div class="card" style="text-align: center; color: var(--text-muted); padding: 20px;">No tasks found.</div>`;
@@ -611,13 +797,16 @@ function renderTasks(tasks) {
             tr = document.createElement('tr');
             tr.id = `row-${task.task_id}`;
             tr.innerHTML = `
+                <td style="vertical-align: top; text-align: center;"><div class="task-checkbox-wrap"><input type="checkbox" class="task-checkbox" data-task-id="${task.task_id}" ${selectedTaskIds.has(task.task_id) ? 'checked' : ''} onchange="toggleTaskSelection('${task.task_id}', this.checked)" aria-label="Select task ${shortId}"></div></td>
                 <td style="vertical-align: top;">${detailsHtml}</td>
                 <td style="vertical-align: top;"><pre style="margin:0; white-space: pre-wrap; word-wrap: break-word; font-family: var(--font-family-mono); font-size: var(--font-size-xs); color: var(--text-primary);"><code>${escapeHtml(task.command)}</code></pre></td>
                 <td style="vertical-align: top; text-align: center;"><div class="status-badge"></div></td>
                 <td style="vertical-align: top;"><pre class="log-output" id="terminal-${task.task_id}"></pre></td>
             `;
         } else {
-            const detailsCell = tr.firstElementChild;
+            const chk = tr.querySelector('.task-checkbox');
+            if (chk) chk.checked = selectedTaskIds.has(task.task_id);
+            const detailsCell = tr.children[1];
             if (detailsCell) detailsCell.innerHTML = detailsHtml;
         }
 
@@ -654,6 +843,9 @@ function renderTasks(tasks) {
     while (tbody.children.length > taskList.length) {
         tbody.lastElementChild.remove();
     }
+
+    syncCheckboxStates();
+    updateBatchDock();
 }
 
 function renderTaskCard(task) {
@@ -676,9 +868,12 @@ function renderTaskCard(task) {
 
     const cardHtml = `
         <header class="task-card-header">
-            <div class="task-id-badge">
-                <span class="queue-chip queue-${qName}">${(task.queue_name || 'DEFAULT').toUpperCase()}</span>
-                <code class="task-id-code">#${shortId}</code>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="task-checkbox" data-task-id="${task.task_id}" ${selectedTaskIds.has(task.task_id) ? 'checked' : ''} onchange="toggleTaskSelection('${task.task_id}', this.checked)" aria-label="Select task ${shortId}">
+                <div class="task-id-badge">
+                    <span class="queue-chip queue-${qName}">${(task.queue_name || 'DEFAULT').toUpperCase()}</span>
+                    <code class="task-id-code">#${shortId}</code>
+                </div>
             </div>
             <div class="task-status-pill ${statusClass}" role="status" aria-label="Status: ${task.status}">
                 ${task.status === 'Running' ? '<span class="ticker-dot active" style="margin-right: 4px;"></span>' : ''}
@@ -729,6 +924,8 @@ function renderTaskCard(task) {
     } else {
         card.dataset.status = task.status;
         card.innerHTML = cardHtml;
+        const chk = card.querySelector('.task-checkbox');
+        if (chk) chk.checked = selectedTaskIds.has(task.task_id);
     }
 }
 
@@ -789,6 +986,154 @@ async function purgeTasks() {
         }
     } catch (error) {
         showToast("Failed to purge tasks: " + error.message, "error");
+    }
+}
+
+// --------------------------------------------------------------------------
+// BATCH OPERATIONS & SELECTION MANAGEMENT (MVP 2)
+// --------------------------------------------------------------------------
+function toggleTaskSelection(taskId, isSelected) {
+    if (isSelected) {
+        selectedTaskIds.add(taskId);
+    } else {
+        selectedTaskIds.delete(taskId);
+    }
+    triggerHaptic(10);
+    syncCheckboxStates();
+    updateBatchDock();
+}
+
+function toggleSelectAll(selectAll) {
+    const taskIds = Object.keys(loadedTasks);
+    if (selectAll) {
+        taskIds.forEach(id => selectedTaskIds.add(id));
+    } else {
+        selectedTaskIds.clear();
+    }
+    triggerHaptic(15);
+    syncCheckboxStates();
+    updateBatchDock();
+}
+
+function deselectAllTasks() {
+    selectedTaskIds.clear();
+    syncCheckboxStates();
+    updateBatchDock();
+}
+
+function syncCheckboxStates() {
+    const allTaskIds = Object.keys(loadedTasks);
+    const allSelected = allTaskIds.length > 0 && allTaskIds.every(id => selectedTaskIds.has(id));
+    
+    const deskAll = document.getElementById('select-all-desktop');
+    if (deskAll) deskAll.checked = allSelected;
+    const mobAll = document.getElementById('select-all-mobile');
+    if (mobAll) mobAll.checked = allSelected;
+    
+    document.querySelectorAll('.task-checkbox[data-task-id]').forEach(cb => {
+        const tid = cb.dataset.taskId;
+        cb.checked = selectedTaskIds.has(tid);
+    });
+}
+
+function updateBatchDock() {
+    const dock = document.getElementById('batch-action-dock');
+    const countLabel = document.getElementById('batch-selection-count');
+    if (!dock) return;
+    
+    const count = selectedTaskIds.size;
+    if (count > 0) {
+        if (countLabel) countLabel.textContent = `${count} Task${count > 1 ? 's' : ''} Selected`;
+        dock.style.display = 'block';
+    } else {
+        dock.style.display = 'none';
+    }
+}
+
+async function batchCancelSelected() {
+    if (selectedTaskIds.size === 0) return;
+    const ids = Array.from(selectedTaskIds);
+    const ok = await showAppConfirm(`Are you sure you want to cancel ${ids.length} selected task(s)?`);
+    if (!ok) return;
+    
+    showLoading(40);
+    try {
+        const res = await fetch('/api/tasks/batch/cancel', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_ids: ids })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || `Cancelled ${data.cancelled_count} task(s).`, 'success');
+            triggerHaptic(20);
+            deselectAllTasks();
+            fetchTasks(tasksOffset);
+        } else {
+            showToast(`Batch cancel failed: ${data.detail || data.message}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Batch cancel error: ${err.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function batchRetrySelected() {
+    if (selectedTaskIds.size === 0) return;
+    const ids = Array.from(selectedTaskIds);
+    const ok = await showAppConfirm(`Are you sure you want to retry ${ids.length} selected task(s)?`);
+    if (!ok) return;
+    
+    showLoading(40);
+    try {
+        const res = await fetch('/api/tasks/batch/retry', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_ids: ids })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || `Requeued ${data.retried_count} task(s).`, 'success');
+            triggerHaptic(20);
+            deselectAllTasks();
+            fetchTasks(tasksOffset);
+        } else {
+            showToast(`Batch retry failed: ${data.detail || data.message}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Batch retry error: ${err.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function batchPurgeSelected() {
+    if (selectedTaskIds.size === 0) return;
+    const ids = Array.from(selectedTaskIds);
+    const ok = await showAppConfirm(`Are you sure you want to purge ${ids.length} selected task(s) from history?`);
+    if (!ok) return;
+    
+    showLoading(40);
+    try {
+        const res = await fetch('/api/tasks/batch/purge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_ids: ids })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(data.message || `Purged ${data.purged_count} task(s).`, 'success');
+            triggerHaptic(20);
+            deselectAllTasks();
+            applyFilters();
+        } else {
+            showToast(`Batch purge failed: ${data.detail || data.message}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Batch purge error: ${err.message}`, 'error');
+    } finally {
+        hideLoading();
     }
 }
 
@@ -2007,18 +2352,239 @@ async function startMediaConversion(relativePath, profileName) {
 }
 
 // --------------------------------------------------------------------------
-// APPLICATION INITIALIZATION (FRICTIONLESS NO-AUTH)
+// AUTHENTICATION & RBAC UI MANAGEMENT (MVP 2)
+// --------------------------------------------------------------------------
+let systemInitialized = false;
+
+async function initAuth() {
+    try {
+        const statusRes = await originalFetch('/api/auth/status');
+        if (statusRes.ok) {
+            const statusData = await statusRes.json();
+            systemInitialized = statusData.initialized;
+            if (!systemInitialized) {
+                currentUser = {
+                    user_id: 'root-uninit',
+                    email: 'Setup Root Admin',
+                    role: 'Admin',
+                    token: ''
+                };
+                updateUserUI();
+                return;
+            }
+        }
+    } catch (e) {
+        console.warn('[Auth] Status check failed:', e);
+    }
+    
+    const token = getAuthToken();
+    if (token) {
+        try {
+            const meRes = await fetch('/api/auth/me');
+            if (meRes.ok) {
+                const meData = await meRes.json();
+                currentUser = { ...meData, token };
+            } else {
+                setAuthToken('');
+                currentUser = null;
+            }
+        } catch (e) {
+            console.warn('[Auth] Token verification failed:', e);
+            setAuthToken('');
+            currentUser = null;
+        }
+    } else {
+        currentUser = null;
+    }
+    updateUserUI();
+}
+
+function updateUserUI() {
+    const roleBadge = document.getElementById('user-role-badge');
+    const emailLabel = document.getElementById('user-email-label');
+    const profileEmail = document.getElementById('profile-email-val');
+    const profileRole = document.getElementById('profile-role-val');
+    
+    if (currentUser) {
+        const role = (currentUser.role || 'Admin').toUpperCase();
+        if (roleBadge) {
+            roleBadge.textContent = role;
+            roleBadge.className = `role-badge role-badge-${(currentUser.role || 'admin').toLowerCase()}`;
+        }
+        if (emailLabel) emailLabel.textContent = currentUser.email || 'Admin';
+        if (profileEmail) profileEmail.textContent = currentUser.email || '';
+        if (profileRole) {
+            profileRole.textContent = role;
+            profileRole.className = `role-badge role-badge-${(currentUser.role || 'admin').toLowerCase()}`;
+        }
+    } else {
+        if (roleBadge) {
+            roleBadge.textContent = 'GUEST';
+            roleBadge.className = 'role-badge role-badge-viewer';
+        }
+        if (emailLabel) emailLabel.textContent = systemInitialized ? 'Sign In' : 'Setup Admin';
+        if (profileEmail) profileEmail.textContent = 'Not signed in';
+        if (profileRole) {
+            profileRole.textContent = 'GUEST';
+            profileRole.className = 'role-badge role-badge-viewer';
+        }
+    }
+}
+
+function openAuthModal(viewOverride) {
+    const modal = document.getElementById('auth-modal');
+    const setupView = document.getElementById('auth-setup-view');
+    const loginView = document.getElementById('auth-login-view');
+    const profileView = document.getElementById('auth-profile-view');
+    const title = document.getElementById('auth-modal-title');
+    if (!modal) return;
+    
+    setupView.style.display = 'none';
+    loginView.style.display = 'none';
+    profileView.style.display = 'none';
+    
+    if (viewOverride === 'setup' || (!systemInitialized && !currentUser?.user_id?.startsWith('usr_'))) {
+        title.textContent = 'System Initialization';
+        setupView.style.display = 'block';
+    } else if (viewOverride === 'login' || !currentUser || !currentUser.token) {
+        title.textContent = 'Sign In';
+        loginView.style.display = 'block';
+    } else {
+        title.textContent = 'User Profile';
+        profileView.style.display = 'block';
+    }
+    modal.style.display = 'flex';
+}
+
+function closeAuthModal() {
+    const modal = document.getElementById('auth-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleSetupAdmin(e) {
+    if (e) e.preventDefault();
+    const email = document.getElementById('setup-email')?.value.trim();
+    const password = document.getElementById('setup-password')?.value;
+    const confirm = document.getElementById('setup-confirm-password')?.value;
+    
+    if (!email || !password) {
+        showToast('Please provide both email and password.', 'warning');
+        return;
+    }
+    if (password !== confirm) {
+        showToast('Passwords do not match.', 'error');
+        return;
+    }
+    
+    showLoading(50);
+    try {
+        const res = await originalFetch('/api/auth/setup-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast('Root administrator initialized successfully!', 'success');
+            setAuthToken(data.token);
+            currentUser = {
+                user_id: data.user.id,
+                email: data.user.email,
+                role: data.user.role,
+                token: data.token
+            };
+            systemInitialized = true;
+            updateUserUI();
+            closeAuthModal();
+            initEventStream();
+        } else {
+            showToast(`Setup failed: ${data.detail}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Setup error: ${err.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function handleLogin(e) {
+    if (e) e.preventDefault();
+    const email = document.getElementById('login-email')?.value.trim();
+    const password = document.getElementById('login-password')?.value;
+    
+    if (!email || !password) {
+        showToast('Please enter email and password.', 'warning');
+        return;
+    }
+    
+    showLoading(50);
+    try {
+        const res = await originalFetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(`Welcome back, ${data.user.email}!`, 'success');
+            setAuthToken(data.token);
+            currentUser = {
+                user_id: data.user.id,
+                email: data.user.email,
+                role: data.user.role,
+                token: data.token
+            };
+            systemInitialized = true;
+            updateUserUI();
+            closeAuthModal();
+            initEventStream();
+            fetchTasks(0);
+        } else {
+            showToast(`Login failed: ${data.detail}`, 'error');
+        }
+    } catch (err) {
+        showToast(`Login error: ${err.message}`, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function handleLogout() {
+    showLoading(30);
+    try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+    } catch (e) {}
+    setAuthToken('');
+    currentUser = null;
+    updateUserUI();
+    closeAuthModal();
+    showToast('Signed out successfully.', 'info');
+    initEventStream();
+    hideLoading();
+}
+
+// --------------------------------------------------------------------------
+// APPLICATION INITIALIZATION
 // --------------------------------------------------------------------------
 async function initApp() {
-    console.log("[Pareo V2] Booting application in frictionless no-auth mode...");
+    console.log("[Pareo V2] Booting application...");
     
+    // 0. Initialize PWA
+    initPWA();
+
     // 1. Initialize Bespoke Theme Engine
     initTheme();
-    
-    // 2. Connect Real-Time SSE Bus
+
+    // 2. Auth & RBAC State
+    await initAuth();
+
+    // 3. Connect Real-Time SSE Bus
     initEventStream();
+
+    // 4. Load Initial Telemetry
+    fetchInitialTelemetry();
     
-    // 3. Load Application Data
+    // 5. Load Application Data
     fetchTasks(0);
     fetchProfiles();
     fetchFsConfig();
@@ -2028,7 +2594,7 @@ async function initApp() {
     fetchGenericCards();
     fetchProcessConfig();
     
-    // 4. Default to Tasks Tab
+    // 6. Default to Tasks Tab
     switchTab('tasks');
 }
 

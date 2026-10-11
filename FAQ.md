@@ -24,10 +24,16 @@ Pareo uses SQLite for all persistent states, task history, and library sync cach
 
 ## Security & Authentication Roadmap
 
-### Q4: What is the authentication roadmap for Pareo V2?
-Based on user architectural direction, authentication follows a staged roadmap:
-- **MVP 1 (Current): Frictionless Local Network Access (No Auth):** Pareo operates without authentication barriers to maximize developer ergonomics, eliminate initial login hurdles, and enable instant local LAN operation. All REST endpoints and SSE streams are directly accessible without requiring `X-Pareo-Auth`.
-- **MVP 2: Email-Based Authentication & Role-Based Access Control:** Introduces user accounts via email registration and login, salted password hashing (PBKDF2-HMAC-SHA256 with 100,000 iterations) or magic links, persistent SQLite session token management with automated expiry, and user roles (`Admin`, `Operator`, `Viewer`).
+### Q4: What is the authentication architecture in Pareo V2?
+Pareo V2 provides enterprise-grade, lightweight authentication and Role-Based Access Control (RBAC):
+- **Salted Password Hashing:** User passwords are encrypted using PBKDF2-HMAC-SHA256 with 100,000 iterations and 16-byte cryptographically secure random salts. Verification employs constant-time comparison (`hmac.compare_digest`) to prevent timing side-channel attacks.
+- **Session Tokens:** Successful login issues a 32-byte URL-safe session token stored in SQLite (`sessions` table) with configurable TTL (default 48 hours).
+- **Flexible Token Extraction:** Endpoints accept tokens via standard `Authorization: Bearer <token>`, custom `X-Pareo-Auth` headers, or query parameter (`?token=`) for EventSource SSE streams.
+- **Hierarchical RBAC Roles:**
+  - **`Admin`:** Complete administrative authority, user provisioning (`POST /api/auth/register`), batch actions, daemon lifecycle, and system configuration.
+  - **`Operator`:** Operational execution, task retries, task cancellation, batch queue manipulation, and utility access.
+  - **`Viewer`:** Read-only access to queues, logs, processes, and system telemetry. Mutation attempts are blocked with HTTP 403 Forbidden.
+- **Frictionless LAN Fallback:** If zero user accounts exist in the database (initial boot), Pareo operates in frictionless LAN mode, granting full operational access without login prompts.
 
 ### Q5: How does Pareo prevent directory traversal attacks?
 All filesystem endpoints and command generators validate target paths against configured `allowed_roots` using canonical path resolution (`pathlib.Path.resolve()`) and lexical boundary checking (`os.path.commonpath([root, path]) == root`). Any path attempting to escape via `..` or symbolic link trickery is rejected with HTTP 403. Furthermore, path strings are validated against control characters and length constraints before triggering filesystem syscalls.
@@ -75,20 +81,23 @@ python3 -c "import database; database.init_db(); print('DB Initialized successfu
 
 ## Multi-MVP Phased Roadmap Scope
 
-### MVP 1 (Current): Foundation, Async Core, Real-Time SSE Engine & Dual Bespoke Themes (No Auth)
+### MVP 1 (Released & Baselined - v2.0.0-mvp1): Foundation, Async Core, Real-Time SSE Engine & Dual Bespoke Themes
+- Default binding to 0.0.0.0:9046.
 - Frictionless local network access (zero auth barrier).
-- Non-blocking asynchronous execution across all endpoints (`asyncio.create_subprocess_exec` / `asyncio.to_thread`).
+- Non-blocking asynchronous execution across all endpoints (`run_async_subprocess` / `asyncio.create_subprocess_exec`).
 - Database performance tuning (SQLite indices on status/queue/start_time, WAL autocheckpoint).
 - Real-time Server-Sent Events (SSE) bus (`GET /api/stream/events`).
 - Responsive dual-theme UI featuring "Sony's Wipeout" and "Fallout Atompunk", with mobile card conversion and bottom navigation.
+- 44/44 automated tests passing.
 
-### MVP 2: Email Authentication, User Roles, System Telemetry & Cross-Platform PWA
-- Email-based registration, login, session token store, and role-based access control.
-- Host system telemetry engine (`GET /api/telemetry` & SSE feed: CPU, RAM, disk usage).
+### MVP 2 (Released & Baselined - v2.0.0-mvp2): Email Authentication, User Roles, System Telemetry, Batch Controls & Cross-Platform PWA
+- Email-based registration, login, session token store, and Role-Based Access Control (`Admin`, `Operator`, `Viewer`).
+- Host system telemetry engine (`GET /api/telemetry` & SSE feed: CPU, RAM, disk usage across allowed roots, worker slots).
 - Queue health and worker slot saturation gauges.
-- Interactive batch queue management (batch cancel, retry, purge).
+- Interactive batch queue management (batch cancel, retry, purge) with bottom action dock.
 - Task duration analytics and failure breakdown.
 - Truly responsive Progressive Web App (PWA) for iOS and Android: Web App Manifest, Service Worker offline caching, safe-area insets (`env(safe-area-inset-*)`), and native install prompt.
+- 59/59 automated tests passing.
 
 ---
 

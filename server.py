@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ import executor
 import command_builder
 import database
 import process_manager
+import telemetry
 from broadcaster import broadcaster
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -101,10 +102,14 @@ async def run_async_subprocess(cmd_args: list, timeout: float = 15.0):
                 pass
         raise HTTPException(status_code=504, detail="Subprocess timed out after 15 seconds.")
 
+_telemetry_task = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _telemetry_task
     # 1. Boot up the SQLite database
     database.init_db()
+    database.cleanup_expired_sessions()
     
     # 2. Recover State (Mark orphaned tasks as failed, requeue pending)
     recovered_count = executor.recover_tasks()
@@ -112,6 +117,18 @@ async def lifespan(app: FastAPI):
     
     # 3. Start parallel workers
     executor.start_workers()
+
+    # 4. Background telemetry sampler (every 2.0s)
+    async def _telemetry_sampler():
+        while True:
+            try:
+                data = telemetry.get_system_telemetry(get_allowed_roots())
+                broadcaster.broadcast_telemetry(data)
+            except Exception:
+                pass
+            await asyncio.sleep(2.0)
+
+    _telemetry_task = asyncio.create_task(_telemetry_sampler())
 
     print("--- PAREO V2 ROUTING READY (PORT 9046) ---")
     for idx, route in enumerate(app.routes):
@@ -121,39 +138,273 @@ async def lifespan(app: FastAPI):
     print("------------------------------------------")
 
     yield
-    # Cleanly stop workers on shutdown
+    # Cleanly stop telemetry & workers on shutdown
+    if _telemetry_task:
+        _telemetry_task.cancel()
     await executor.stop_workers()
 
 app = FastAPI(title="Pareo API", lifespan=lifespan)
 
-# --- AUTHENTICATION COMPATIBILITY (MVP 1: FRICTIONLESS NO-AUTH MODE) ---
+# --- AUTHENTICATION & RBAC (MVP 2) ---
 class PasswordAuthRequest(BaseModel):
     password: str
 
+class UserSetupRequest(BaseModel):
+    email: str
+    password: str
+    confirm_password: Optional[str] = None
+
+class UserRegisterRequest(BaseModel):
+    email: str
+    password: str
+    role: Optional[str] = "Viewer"
+
+class UserLoginRequest(BaseModel):
+    email: Optional[str] = None
+    password: str
+
+class BatchTaskRequest(BaseModel):
+    task_ids: List[str]
+
+async def get_current_user(request: Request) -> dict:
+    """Extracts and verifies authenticated user session. Allows setup mode if 0 users."""
+    user_count = database.count_users()
+    if user_count == 0:
+        return {
+            "user_id": "setup-root",
+            "email": "admin@pareo.local",
+            "role": "Admin",
+            "is_active": 1,
+            "created_at": ""
+        }
+
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    elif request.headers.get("X-Pareo-Auth"):
+        token = request.headers.get("X-Pareo-Auth").strip()
+    elif "token" in request.query_params:
+        token = request.query_params["token"].strip()
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication token required")
+
+    session = database.get_session(token)
+    if not session:
+        raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
+    user = database.get_user_by_id(session["user_id"])
+    if not user or not user.get("is_active"):
+        raise HTTPException(status_code=401, detail="User account is inactive or disabled")
+
+    user_dict = dict(user)
+    user_dict.pop("password_hash", None)
+    user_dict.pop("salt", None)
+    user_dict["token"] = token
+    return user_dict
+
+def require_role(allowed_roles: List[str]):
+    """Role-Based Access Control dependency factory."""
+    async def role_checker(user: dict = Depends(get_current_user)):
+        if user.get("role") not in allowed_roles:
+            raise HTTPException(status_code=403, detail="Forbidden: Insufficient privileges for this operation")
+        return user
+    return role_checker
+
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    """MVP 1: Frictionless local network access - all endpoints pass through without header verification."""
+    """Pass-through middleware allowing FastAPI dependencies to enforce fine-grained auth."""
     return await call_next(request)
+
+@app.get("/api/auth/status")
+def auth_status():
+    """Returns whether system is initialized with at least one user."""
+    cnt = database.count_users()
+    return {"initialized": cnt > 0, "user_count": cnt}
+
+@app.post("/api/auth/setup-admin")
+def setup_admin(req: UserSetupRequest):
+    """Creates the root Admin account on first system initialization."""
+    if database.count_users() > 0:
+        raise HTTPException(status_code=400, detail="System is already initialized.")
+    if req.confirm_password and req.password != req.confirm_password:
+        raise HTTPException(status_code=400, detail="Passwords do not match.")
+    if not req.email or "@" not in req.email or len(req.email) >= 256:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    user = database.create_user(req.email, req.password, role="Admin")
+    session = database.create_session(user["user_id"])
+    return {"token": session["token"], "user": user}
+
+@app.post("/api/auth/register")
+def register_user(req: UserRegisterRequest, request: Request):
+    """Registers a user account. Requires Admin credentials once initialized."""
+    user_count = database.count_users()
+    if user_count > 0:
+        token = None
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif request.headers.get("X-Pareo-Auth"):
+            token = request.headers.get("X-Pareo-Auth").strip()
+        elif "token" in request.query_params:
+            token = request.query_params["token"].strip()
+            
+        if not token:
+            raise HTTPException(status_code=401, detail="Admin token required to register users.")
+        sess = database.get_session(token)
+        if not sess:
+            raise HTTPException(status_code=401, detail="Invalid token.")
+        admin_user = database.get_user_by_id(sess["user_id"])
+        if not admin_user or admin_user.get("role") != "Admin":
+            raise HTTPException(status_code=403, detail="Only Admin can register new users.")
+
+    if not req.email or "@" not in req.email or len(req.email) >= 256:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    if len(req.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+
+    existing = database.get_user_by_email(req.email)
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    role = "Admin" if user_count == 0 else (req.role or "Viewer")
+    if role not in ["Admin", "Operator", "Viewer"]:
+        role = "Viewer"
+
+    user = database.create_user(req.email, req.password, role=role)
+    session = database.create_session(user["user_id"])
+    return {"token": session["token"], "user": user}
+
+@app.post("/api/auth/login")
+def login_auth(req: UserLoginRequest):
+    """Validates user credentials, creates session, or provides backwards-compat fallback."""
+    user_count = database.count_users()
+    if user_count == 0 or not req.email:
+        return {"status": "authorized", "mode": "no-auth", "token": "no-auth-token"}
+
+    user = database.get_user_by_email(req.email)
+    if not user or not user.get("is_active"):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    if not database.verify_password(req.password, user["salt"], user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    database.update_user_last_login(user["user_id"])
+    session = database.create_session(user["user_id"])
+    return {
+        "token": session["token"],
+        "user": {
+            "user_id": user["user_id"],
+            "email": user["email"],
+            "role": user["role"],
+            "created_at": user["created_at"]
+        }
+    }
+
+@app.post("/api/auth/logout")
+def logout_auth(request: Request, user: dict = Depends(get_current_user)):
+    """Revokes active session."""
+    token = user.get("token")
+    if token:
+        database.delete_session(token)
+    return {"status": "logged_out"}
+
+@app.get("/api/auth/me")
+def get_current_user_profile(user: dict = Depends(get_current_user)):
+    """Returns profile for currently authenticated user."""
+    return {
+        "user_id": user["user_id"],
+        "email": user["email"],
+        "role": user["role"],
+        "created_at": user.get("created_at", "")
+    }
 
 @app.get("/api/auth/verify")
 def verify_auth(request: Request):
-    """MVP 1 No-Auth mode: Always returns authorized."""
-    return {"status": "authorized", "mode": "no-auth"}
+    """Validates session or reports uninitialized state."""
+    user_count = database.count_users()
+    if user_count == 0:
+        return {"status": "authorized", "mode": "no-auth"}
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    elif request.headers.get("X-Pareo-Auth"):
+        token = request.headers.get("X-Pareo-Auth").strip()
+    elif "token" in request.query_params:
+        token = request.query_params["token"].strip()
+    if not token:
+        return {"status": "unauthorized", "mode": "auth"}
+    session = database.get_session(token)
+    if not session:
+        return {"status": "unauthorized", "mode": "auth"}
+    user = database.get_user_by_id(session["user_id"])
+    if not user or not user.get("is_active"):
+        return {"status": "unauthorized", "mode": "auth"}
+    return {
+        "status": "authorized",
+        "mode": "auth",
+        "user": {
+            "user_id": user["user_id"],
+            "email": user["email"],
+            "role": user["role"]
+        }
+    }
 
 @app.post("/api/auth/setup")
 def setup_password(req: PasswordAuthRequest):
-    """Compatibility endpoint for password setup."""
+    """Compatibility endpoint for legacy password setup tests."""
     return {"status": "authorized", "mode": "no-auth", "token": "no-auth-token"}
 
-@app.post("/api/auth/login")
-def login_auth(req: PasswordAuthRequest):
-    """Compatibility endpoint for user login."""
-    return {"status": "authorized", "mode": "no-auth", "token": "no-auth-token"}
+# --- TELEMETRY & BATCH QUEUE ENDPOINTS ---
+
+@app.get("/api/telemetry")
+def get_telemetry_snapshot(user: dict = Depends(get_current_user)):
+    """Returns current host and queue telemetry snapshot."""
+    return telemetry.get_system_telemetry(get_allowed_roots())
+
+@app.post("/api/tasks/batch/cancel")
+async def batch_cancel_tasks_endpoint(req: BatchTaskRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
+    """Cancels multiple tasks in one call."""
+    cancelled = await executor.batch_cancel_tasks(req.task_ids)
+    return {"cancelled_count": len(cancelled), "task_ids": cancelled}
+
+@app.post("/api/tasks/batch/retry")
+async def batch_retry_tasks_endpoint(req: BatchTaskRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
+    """Retries multiple failed or cancelled tasks in one call."""
+    retried = await executor.batch_retry_tasks(req.task_ids)
+    return {"retried_count": len(retried), "task_ids": retried}
+
+@app.post("/api/tasks/batch/purge")
+async def batch_purge_tasks_endpoint(req: BatchTaskRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
+    """Purges multiple finished or cancelled tasks in one call."""
+    purged = await executor.batch_purge_tasks(req.task_ids)
+    return {"purged_count": len(purged), "task_ids": purged}
 
 # --- REAL-TIME SERVER-SENT EVENTS (SSE) BUS ---
 @app.get("/api/stream/events")
 async def stream_events(request: Request):
-    """Server-Sent Events endpoint streaming live task status, logs, and queue counts."""
+    """Server-Sent Events endpoint streaming live task status, logs, queue counts, and telemetry."""
+    user_count = database.count_users()
+    if user_count > 0:
+        token = None
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif request.headers.get("X-Pareo-Auth"):
+            token = request.headers.get("X-Pareo-Auth").strip()
+        elif "token" in request.query_params:
+            token = request.query_params["token"].strip()
+            
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication token required")
+        session = database.get_session(token)
+        if not session:
+            raise HTTPException(status_code=401, detail="Invalid or expired session token")
+
     queue = await broadcaster.subscribe()
     
     async def event_generator():
@@ -166,7 +417,7 @@ async def stream_events(request: Request):
             yield f"event: task_counts\ndata: {json.dumps(counts)}\n\n"
         except Exception:
             pass
-            
+
         try:
             while True:
                 if await request.is_disconnected():
@@ -191,6 +442,7 @@ async def stream_events(request: Request):
             "X-Accel-Buffering": "no"
         }
     )
+
 
 # --- MODELS ---
 class GenericTaskRequest(BaseModel):
@@ -223,20 +475,20 @@ class RenameRequest(BaseModel):
 # --- CONFIG & EXECUTION ENDPOINTS ---
 
 @app.post("/api/execute/ls")
-async def execute_ls():
+async def execute_ls(user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Queues the 'ls -ltr' command."""
     task_id = await executor.start_task("ls -ltr")
     return {"task_id": task_id, "message": "Command queued."}
 
 @app.get("/api/config/ffmpeg")
-def get_ffmpeg_config():
+def get_ffmpeg_config(user: dict = Depends(get_current_user)):
     """Serves the complete FFMPEG profile schema from config.json."""
     config = command_builder.load_config()
     profiles = config.get("ffmpeg", {}).get("profiles", {})
     return {"profiles": profiles}
 
 @app.post("/api/execute/ffmpeg")
-async def execute_ffmpeg(request: FfmpegRequest):
+async def execute_ffmpeg(request: FfmpegRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Builds and queues one or multiple FFMPEG jobs."""
     if not is_path_allowed(request.input_target) or not is_path_allowed(request.output_target):
         raise HTTPException(status_code=403, detail="Access denied: Paths must reside within allowed root directories.")
@@ -277,19 +529,19 @@ async def execute_ffmpeg(request: FfmpegRequest):
     return {"message": f"Successfully queued {len(tasks)} FFMPEG task(s).", "tasks": tasks}
 
 @app.get("/api/config/fs")
-def get_fs_config():
+def get_fs_config(user: dict = Depends(get_current_user)):
     """Serves the file operations configuration."""
     config = command_builder.load_config()
     return config.get("file_operations", {})
 
 @app.get("/api/config/bookmarks")
-def get_bookmarks_config():
+def get_bookmarks_config(user: dict = Depends(get_current_user)):
     """Serves the global bookmarks schema for quick-access paths."""
     config = command_builder.load_config()
     return config.get("bookmarks", {})
 
 @app.get("/api/config/remotes")
-def get_remotes_config():
+def get_remotes_config(user: dict = Depends(get_current_user)):
     """Serves the Remote Servers config schema (including context-aware bookmarks)."""
     config = command_builder.load_config()
     return config.get("remote_servers", {})
@@ -462,7 +714,7 @@ async def rename_remote_item(remote_name: str, source_path: str, new_name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/fs/list")
-async def list_directory(target_path: str = "/", remote_server: Optional[str] = ""):
+async def list_directory(target_path: str = "/", remote_server: Optional[str] = "", user: dict = Depends(get_current_user)):
     """Returns a JSON array of files and folders for the Explorer Modal."""
     allowed = get_allowed_roots(remote_server)
     if not allowed:
@@ -504,7 +756,7 @@ async def list_directory(target_path: str = "/", remote_server: Optional[str] = 
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/fs/rename")
-async def rename_fs_item(request: RenameRequest):
+async def rename_fs_item(request: RenameRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Renames a file or folder immediately using local or remote execution."""
     if request.remote_server:
         return await rename_remote_item(request.remote_server, request.source_path, request.new_name)
@@ -528,7 +780,7 @@ async def rename_fs_item(request: RenameRequest):
         raise HTTPException(status_code=500, detail=f"Failed to rename: {str(e)}")
 
 @app.post("/api/execute/fs")
-async def execute_fs_action(request: FsRequest):
+async def execute_fs_action(request: FsRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Queues one or multiple file system operations."""
     config = command_builder.load_config()
     actions = config.get("file_operations", {}).get("actions", {})
@@ -569,13 +821,13 @@ async def execute_fs_action(request: FsRequest):
 
 # --- SWITCHBOARD & GENERIC TASKS ---
 @app.get("/api/config/switchboard")
-def get_switchboard_config():
+def get_switchboard_config(user: dict = Depends(get_current_user)):
     """Serves the dynamic switchboard layout."""
     config = command_builder.load_config()
     return config.get("switchboard", {})
 
 @app.post("/api/execute/switchboard")
-async def execute_switchboard(request: SwitchboardRequest):
+async def execute_switchboard(request: SwitchboardRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Dispatches a switchboard action based on its configuration."""
     config = command_builder.load_config()
     switchboard = config.get("switchboard", {})
@@ -615,13 +867,13 @@ async def execute_switchboard(request: SwitchboardRequest):
         }
 
 @app.get("/api/config/cards")
-def get_generic_cards_config():
+def get_generic_cards_config(user: dict = Depends(get_current_user)):
     """Serves custom form definitions from config.json."""
     config = command_builder.load_config()
     return config.get("cards", {})
 
 @app.post("/api/execute/generic")
-async def execute_generic_card(request: GenericTaskRequest):
+async def execute_generic_card(request: GenericTaskRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Parses inputs and pushes the resolved command to the background executor."""
     config = command_builder.load_config()
     cards = config.get("cards", {})
@@ -647,19 +899,19 @@ async def execute_generic_card(request: GenericTaskRequest):
 
 # --- PROCESS SUPERVISION ---
 @app.get("/api/config/processes")
-def get_processes_config():
+def get_processes_config(user: dict = Depends(get_current_user)):
     """Serves the processes configuration from config.json."""
     config = command_builder.load_config()
     return config.get("processes", {})
 
 @app.get("/api/processes/status")
-async def get_all_process_statuses():
+async def get_all_process_statuses(user: dict = Depends(get_current_user)):
     """Returns dynamic status checks for all configured processes."""
     statuses = await process_manager.get_all_process_statuses()
     return statuses
 
 @app.post("/api/processes/{name}/start")
-async def start_process_endpoint(name: str):
+async def start_process_endpoint(name: str, user: dict = Depends(require_role(["Admin"]))):
     """Spawns the target process daemon."""
     res = await process_manager.start_process(name)
     if not res["success"]:
@@ -667,7 +919,7 @@ async def start_process_endpoint(name: str):
     return res
 
 @app.post("/api/processes/{name}/stop")
-async def stop_process_endpoint(name: str):
+async def stop_process_endpoint(name: str, user: dict = Depends(require_role(["Admin"]))):
     """Halts the target process daemon."""
     res = await process_manager.stop_process(name)
     if not res["success"]:
@@ -675,32 +927,40 @@ async def stop_process_endpoint(name: str):
     return res
 
 @app.get("/api/processes/{name}/logs")
-def get_process_logs_endpoint(name: str, lines: int = 200):
+def get_process_logs_endpoint(name: str, lines: int = 200, user: dict = Depends(get_current_user)):
     """Fetches real-time log output for a daemon process."""
     logs = process_manager.get_process_logs(name, lines=lines)
     return {"name": name, "logs": logs}
 
 # --- TASK QUERIES & LIFECYCLE ---
 @app.get("/api/tasks/counts")
-def get_task_counts():
+def get_task_counts(user: dict = Depends(get_current_user)):
     """Returns exact counts of ongoing and pending tasks."""
     return database.get_task_counts()
 
 @app.get("/api/tasks")
-def get_tasks(limit: int = 15, offset: int = 0, queue: str = None, status: str = None, command: str = None):
+def get_tasks(limit: int = 15, offset: int = 0, queue: str = None, status: str = None, command: str = None, user: dict = Depends(get_current_user)):
     """Retrieves paginated historical tasks metadata."""
     return database.get_tasks_paginated(limit=limit, offset=offset, queue=queue, status=status, command=command)
 
 @app.get("/api/tasks/{task_id}")
-def get_task_details(task_id: str):
+def get_task_details(task_id: str, user: dict = Depends(get_current_user)):
     """Retrieves full details and complete terminal output for a task."""
     task = database.get_task(task_id)
     if not task:
         return {"error": "Task not found."}
     return task
 
+@app.get("/api/tasks/{task_id}/output")
+def get_task_output(task_id: str, user: dict = Depends(get_current_user)):
+    """Retrieves pure output text for a task."""
+    task = database.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"task_id": task_id, "output": task.get("output", "")}
+
 @app.post("/api/tasks/{task_id}/cancel")
-async def cancel_task_endpoint(task_id: str):
+async def cancel_task_endpoint(task_id: str, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Terminates an ongoing task or removes it from queue."""
     try:
         await executor.cancel_task(task_id)
@@ -709,7 +969,7 @@ async def cancel_task_endpoint(task_id: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/tasks/{task_id}/retry")
-async def retry_task_endpoint(task_id: str):
+async def retry_task_endpoint(task_id: str, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Requeues a failed or cancelled task."""
     try:
         await executor.retry_task(task_id)
@@ -718,7 +978,7 @@ async def retry_task_endpoint(task_id: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/tasks/purge")
-def purge_tasks_endpoint(age: str = "1w"):
+def purge_tasks_endpoint(age: str = "1w", user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Prunes historical completed/failed tasks from SQLite."""
     try:
         deleted = database.purge_tasks(age)
@@ -911,13 +1171,13 @@ def get_library_union(source_meta: dict, backup_meta: dict) -> list:
     return items
 
 @app.get("/api/libraries")
-def list_libraries():
+def list_libraries(user: dict = Depends(get_current_user)):
     """Returns all configured folder libraries."""
     config = command_builder.load_config()
     return config.get("libraries", {})
 
 @app.get("/api/libraries/browse")
-async def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False, nocache: bool = False):
+async def browse_library(library_name: str, subpath: str = "", deep_scan: bool = False, nocache: bool = False, user: dict = Depends(get_current_user)):
     """Gathers sync comparison for a library's source and backup folders asynchronously."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
@@ -1010,7 +1270,7 @@ class MediaConvertRequest(BaseModel):
     profile_name: str
 
 @app.post("/api/libraries/sync")
-async def sync_library_item(request: LibrarySyncRequest):
+async def sync_library_item(request: LibrarySyncRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Queues a file copy task to align source and backup repositories."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
@@ -1140,7 +1400,7 @@ async def sync_library_item(request: LibrarySyncRequest):
     return {"message": "Sync copy task queued successfully.", "command": cmd}
 
 @app.post("/api/libraries/delete")
-async def delete_library_item(request: LibraryDeleteRequest):
+async def delete_library_item(request: LibraryDeleteRequest, user: dict = Depends(require_role(["Admin", "Operator"]))):
     """Queues a deletion task for a library item."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
@@ -1367,7 +1627,7 @@ async def run_conversion_pipeline_task(
                 pass
 
 @app.post("/api/libraries/media-info")
-async def get_media_info(request: MediaInfoRequest):
+async def get_media_info(request: MediaInfoRequest, user: dict = Depends(get_current_user)):
     """Retrieves ffprobe stream details for a media file."""
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
@@ -1509,7 +1769,7 @@ async def get_media_info(request: MediaInfoRequest):
     return details
 
 @app.post("/api/libraries/media-convert")
-async def start_media_conversion(request: MediaConvertRequest, background_tasks: BackgroundTasks):
+async def start_media_conversion(request: MediaConvertRequest, background_tasks: BackgroundTasks, user: dict = Depends(require_role(["Admin", "Operator"]))):
     config = command_builder.load_config()
     libraries = config.get("libraries", {})
     profiles = config.get("ffmpeg", {}).get("profiles", {})

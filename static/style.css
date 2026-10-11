@@ -1093,3 +1093,346 @@ label {
     transition: width 0.2s ease, opacity 0.3s ease;
     opacity: 0;
 }
+
+/* --------------------------------------------------------------------------
+   MVP 2: PWA SAFE AREA INSETS, TELEMETRY GAUGES, BATCH DOCK & AUTH SHEETS
+   -------------------------------------------------------------------------- */
+
+/* Safe Area Inset Adaptation */
+.top-nav {
+    padding-top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+}
+
+.bottom-nav {
+    padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+}
+
+/* Offline Banner */
+.offline-banner {
+    background-color: var(--status-pending-bg);
+    border-bottom: 1px solid var(--status-pending);
+    color: var(--status-pending);
+    text-align: center;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-family-mono);
+    font-weight: var(--font-weight-semibold);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+/* User Profile & Role Badges */
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-hud);
+    font-size: var(--font-size-xs);
+    font-family: var(--font-family-mono);
+    font-weight: var(--font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.role-badge-admin {
+    background: rgba(255, 85, 0, 0.2);
+    color: var(--accent-secondary);
+    border: 1px solid var(--accent-secondary);
+}
+
+.role-badge-operator {
+    background: rgba(0, 240, 255, 0.2);
+    color: var(--accent-primary);
+    border: 1px solid var(--accent-primary);
+}
+
+.role-badge-viewer {
+    background: rgba(108, 133, 163, 0.2);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+}
+
+.user-badge-btn {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-primary);
+    padding: 4px 10px;
+    font-size: var(--font-size-xs);
+    font-family: var(--font-family-mono);
+    border-radius: var(--radius-hud);
+    cursor: pointer;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all var(--transition-fast);
+}
+
+.user-badge-btn:hover {
+    border-color: var(--accent-primary);
+    box-shadow: var(--hud-glow);
+}
+
+/* Header Telemetry Micro-Dials */
+.telemetry-strip {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+@media (max-width: 900px) {
+    .telemetry-strip {
+        display: none;
+    }
+}
+
+.tele-metric {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+.tele-bar {
+    width: 60px;
+    height: 8px;
+    background: var(--bg-surface-elevated);
+    border-radius: 1px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--border-subtle);
+}
+
+.tele-fill {
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+}
+
+[data-theme="wipeout"] .tele-bar {
+    clip-path: var(--clip-chamfer-sm);
+    border-color: rgba(0, 240, 255, 0.3);
+}
+
+[data-theme="wipeout"] .tele-fill {
+    background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+}
+
+[data-theme="fallout-pipboy"] .tele-bar {
+    border-color: var(--border-strong);
+    box-shadow: 0 0 4px rgba(26, 255, 128, 0.2);
+}
+
+[data-theme="fallout-pipboy"] .tele-fill {
+    background: var(--border-strong);
+    box-shadow: 0 0 6px var(--border-strong);
+}
+
+/* Telemetry Detail Grid */
+.telemetry-dashboard-card {
+    margin-bottom: var(--space-5);
+}
+
+.telemetry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+}
+
+.telemetry-card {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-hud);
+}
+
+[data-theme="wipeout"] .telemetry-card {
+    clip-path: var(--clip-chamfer-sm);
+    border-left: 3px solid var(--accent-primary);
+}
+
+[data-theme="fallout-pipboy"] .telemetry-card {
+    border: 1px solid var(--border-strong);
+    box-shadow: 0 0 6px rgba(26, 255, 128, 0.2);
+}
+
+.telemetry-card-title {
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: var(--space-2);
+}
+
+.telemetry-card-val {
+    font-size: var(--font-size-xl);
+    font-family: var(--font-family-mono);
+    color: var(--accent-primary);
+    font-weight: var(--font-weight-bold);
+    margin-bottom: var(--space-2);
+}
+
+.telemetry-card-sub {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-family: var(--font-family-mono);
+}
+
+/* Floating Batch Action Dock */
+.batch-action-dock,
+.bottom-action-dock {
+    position: fixed;
+    z-index: 300;
+    background: var(--bg-surface-elevated);
+    border: 2px solid var(--accent-primary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    border-radius: var(--radius-hud);
+    padding: var(--space-3) var(--space-4);
+    animation: batch-dock-slide var(--transition-base) forwards;
+}
+
+[data-theme="wipeout"] .batch-action-dock,
+[data-theme="wipeout"] .bottom-action-dock {
+    clip-path: var(--clip-chamfer);
+    box-shadow: var(--hud-glow);
+}
+
+[data-theme="fallout-pipboy"] .batch-action-dock,
+[data-theme="fallout-pipboy"] .bottom-action-dock {
+    border: 2px solid var(--border-strong);
+    box-shadow: var(--hud-glow);
+}
+
+@media (min-width: 640px) {
+    .batch-action-dock,
+    .bottom-action-dock {
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: min(90%, 680px);
+    }
+}
+
+@media (max-width: 639px) {
+    .batch-action-dock,
+    .bottom-action-dock {
+        bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+        left: var(--space-3);
+        right: var(--space-3);
+        padding-bottom: var(--space-3);
+    }
+}
+
+.dock-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.batch-count {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    font-family: var(--font-family-mono);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.dock-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.dock-actions .btn {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+@keyframes batch-dock-slide {
+    from { transform: translateY(100%); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+@media (min-width: 640px) {
+    @keyframes batch-dock-slide {
+        from { transform: translate(-50%, 100%); opacity: 0; }
+        to { transform: translate(-50%, 0); opacity: 1; }
+    }
+}
+
+/* Multi-Select Task Checkboxes */
+.task-checkbox {
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+    accent-color: var(--accent-primary);
+}
+
+.task-checkbox-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    cursor: pointer;
+}
+
+/* Bottom Sheet Modals on Mobile */
+.bottom-sheet {
+    overscroll-behavior-y: contain;
+}
+
+.sheet-grabber {
+    display: none;
+}
+
+@media (max-width: 639px) {
+    .sheet-grabber {
+        display: block;
+        width: 40px;
+        height: 5px;
+        background: var(--text-muted);
+        border-radius: 3px;
+        margin: var(--space-2) auto var(--space-1);
+        cursor: grab;
+    }
+    
+    .bottom-sheet .modal-card {
+        border-top-left-radius: 12px;
+        border-top-right-radius: 12px;
+        border-top: 2px solid var(--accent-primary);
+    }
+}
+
+/* Install Button */
+.btn-install {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--accent-primary);
+    color: var(--accent-primary);
+    padding: 4px 12px;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    border-radius: var(--radius-hud);
+    cursor: pointer;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all var(--transition-fast);
+}
+
+.btn-install:hover {
+    background: var(--accent-primary);
+    color: var(--text-inverse);
+    box-shadow: var(--hud-glow);
+}

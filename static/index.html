@@ -2,17 +2,26 @@
 <html lang="en" data-theme="wipeout">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Pareo | Command Engine</title>
+    <meta name="theme-color" content="#07090e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Pareo">
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.0">
-    <link rel="icon" href="data:,">    
+    <link rel="stylesheet" href="style.css?v=2.2">
+    <link rel="icon" href="/static/icons/icon-192.png">    
 </head>
 <body>
     <!-- CRT Scanline Overlay Container for Atompunk Mode -->
     <div class="crt-overlay" aria-hidden="true"></div>
+
+    <!-- Offline Alert Banner -->
+    <div id="offline-banner" class="offline-banner" style="display: none;" role="alert">⚠️ Network Offline — Displaying Cached App Shell</div>
 
     <!-- Non-Blocking Toast Notification Stack -->
     <div id="toast-container" class="toast-container" role="region" aria-label="Notifications" aria-live="polite"></div>
@@ -30,6 +39,23 @@
             </div>
         </div>
 
+        <!-- Real-Time Telemetry Micro-Dials -->
+        <div class="telemetry-strip" id="header-telemetry" role="status" aria-label="Host Telemetry">
+            <div class="tele-metric">
+                <span class="tele-label">CPU</span>
+                <div class="tele-bar"><div id="tele-cpu-fill" class="tele-fill" style="width: 0%;"></div></div>
+                <span id="tele-cpu-val" class="tele-val">0%</span>
+            </div>
+            <div class="tele-metric">
+                <span class="tele-label">RAM</span>
+                <div class="tele-bar"><div id="tele-ram-fill" class="tele-fill" style="width: 0%;"></div></div>
+                <span id="tele-ram-val" class="tele-val">0%</span>
+            </div>
+            <div class="tele-metric">
+                <span id="tele-slots-val" class="tele-val">SLOTS: 0/6</span>
+            </div>
+        </div>
+
         <nav class="nav-links" aria-label="Primary Navigation">
             <button id="btn-tasks" class="nav-btn active" onclick="switchTab('tasks')">Tasks Queue</button>
             <button id="btn-utilities" class="nav-btn" onclick="switchTab('utilities')">Utilities</button>
@@ -37,6 +63,11 @@
         </nav>
 
         <div style="display: flex; align-items: center; gap: 8px;">
+            <button id="btn-install-app" class="btn-install" style="display: none;" onclick="promptInstallPwa()" aria-label="Install Pareo App">📲 Install</button>
+            <button id="btn-user-auth" class="user-badge-btn" onclick="openAuthModal()" aria-label="User Account">
+                <span id="user-role-badge" class="role-badge role-badge-admin">ADMIN</span>
+                <span id="user-email-label">admin@pareo.local</span>
+            </button>
             <button id="btn-theme-toggle" class="btn-theme-switcher" onclick="toggleTheme()" aria-label="Toggle Bespoke Theme">
                 <span id="theme-icon">⚡</span>
                 <span id="theme-label">WIPEOUT</span>
@@ -48,6 +79,36 @@
     <main class="main-content">
         <!-- TAB 1: TASKS QUEUE -->
         <section id="tab-tasks" style="display: block;">
+            <!-- Host & Queue Telemetry Dashboard Card -->
+            <div class="card telemetry-dashboard-card" id="telemetry-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                    <h3 style="margin: 0;">⚡ Host & Queue Telemetry</h3>
+                    <button class="btn btn-secondary btn-sm" onclick="toggleTelemetryDetail()" style="min-height: 36px;">Toggle Detail</button>
+                </div>
+                <div id="telemetry-detail-grid" class="telemetry-grid">
+                    <div class="telemetry-card">
+                        <div class="telemetry-card-title">CPU Utilization</div>
+                        <div id="tele-card-cpu-val" class="telemetry-card-val">0.0%</div>
+                        <div id="tele-card-cpu-sub" class="telemetry-card-sub">Load: 0.00 / 0.00 / 0.00</div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="telemetry-card-title">Memory Allocation</div>
+                        <div id="tele-card-ram-val" class="telemetry-card-val">0.0%</div>
+                        <div id="tele-card-ram-sub" class="telemetry-card-sub">Used: 0 MB / 0 MB</div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="telemetry-card-title">Worker Slot Saturation</div>
+                        <div id="tele-card-queues-val" class="telemetry-card-val">0 / 6</div>
+                        <div id="tele-card-queues-sub" class="telemetry-card-sub">Media: 0/1 | FS: 0/2 | Net: 0/2</div>
+                    </div>
+                    <div class="telemetry-card">
+                        <div class="telemetry-card-title">Primary Storage</div>
+                        <div id="tele-card-disk-val" class="telemetry-card-val">0.0%</div>
+                        <div id="tele-card-disk-sub" class="telemetry-card-sub">Free: 0 GB / 0 GB</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
                     <h3 style="margin: 0;">Task Orchestration Queue</h3>
@@ -100,14 +161,23 @@
                     <table id="tasks-table">
                         <thead>
                             <tr>
+                                <th style="width: 44px; text-align: center;"><div class="task-checkbox-wrap"><input type="checkbox" id="select-all-desktop" class="task-checkbox" onchange="toggleSelectAll(this.checked)" aria-label="Select all tasks"></div></th>
                                 <th style="width: 12%; text-align: left;">Details</th>
-                                <th style="width: 28%; text-align: left;">Workload Command</th>
+                                <th style="width: 26%; text-align: left;">Workload Command</th>
                                 <th style="width: 10%; text-align: center;">Status</th>
-                                <th style="width: 50%; text-align: left;">Terminal Output</th>
+                                <th style="width: 48%; text-align: left;">Terminal Output</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                     </table>
+                </div>
+
+                <!-- Mobile Selection Toolbar -->
+                <div class="mobile-select-toolbar" style="display: flex; align-items: center; margin: 10px 0;">
+                    <label class="task-checkbox-wrap" style="display: inline-flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="select-all-mobile" class="task-checkbox" onchange="toggleSelectAll(this.checked)">
+                        <span style="font-size: var(--font-size-xs); font-family: var(--font-family-mono); margin-left: 8px;">Select All Tasks</span>
+                    </label>
                 </div>
 
                 <!-- Mobile Responsive Task Cards (<640px) -->
@@ -360,6 +430,83 @@
             <div class="modal-footer">
                 <button id="dialog-modal-cancel" class="btn btn-secondary" onclick="closeAppDialog(false)">Cancel</button>
                 <button id="dialog-modal-confirm" class="btn btn-primary" onclick="closeAppDialog(true)">Confirm</button>
+            </div>
+        </div>
+    </div>
+    <!-- FLOATING BATCH ACTION DOCK -->
+    <div id="batch-action-dock" class="batch-action-dock bottom-action-dock" style="display: none;" role="region" aria-label="Batch Task Actions">
+        <div class="dock-content">
+            <span id="batch-selection-count" class="batch-count">0 Tasks Selected</span>
+            <div class="dock-actions">
+                <button id="btn-batch-cancel" class="btn btn-danger btn-sm" onclick="batchCancelSelected()">🛑 Cancel</button>
+                <button id="btn-batch-retry" class="btn btn-warning btn-sm" onclick="batchRetrySelected()">🔁 Retry</button>
+                <button id="btn-batch-purge" class="btn btn-secondary btn-sm" onclick="batchPurgeSelected()">🗑️ Purge</button>
+                <button class="btn btn-outline btn-sm" onclick="deselectAllTasks()">✕ Deselect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL / BOTTOM SHEET: AUTHENTICATION & IDENTITY -->
+    <div id="auth-modal" class="modal-overlay bottom-sheet" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+        <div class="modal-card" style="max-width: 480px;">
+            <div class="sheet-grabber"></div>
+            <div class="modal-header">
+                <h4 id="auth-modal-title">Identity & Access</h4>
+                <button class="close-btn" onclick="closeAuthModal()" aria-label="Close dialog">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- SETUP ADMIN VIEW -->
+                <div id="auth-setup-view" style="display: none;">
+                    <p style="margin-bottom: var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm);">Welcome to Pareo V2. Create the root administrator account to initialize the system.</p>
+                    <form id="form-setup-admin" onsubmit="handleSetupAdmin(event)">
+                        <div style="margin-bottom: var(--space-3);">
+                            <label for="setup-email">Admin Email</label>
+                            <input type="email" id="setup-email" required placeholder="admin@example.com">
+                        </div>
+                        <div style="margin-bottom: var(--space-3);">
+                            <label for="setup-password">Admin Password (min 6 chars)</label>
+                            <input type="password" id="setup-password" minlength="6" required placeholder="••••••••">
+                        </div>
+                        <div style="margin-bottom: var(--space-4);">
+                            <label for="setup-confirm-password">Confirm Password</label>
+                            <input type="password" id="setup-confirm-password" minlength="6" required placeholder="••••••••">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 44px;">Initialize Root Administrator</button>
+                    </form>
+                </div>
+
+                <!-- LOGIN VIEW -->
+                <div id="auth-login-view" style="display: none;">
+                    <p style="margin-bottom: var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm);">Sign in with your email and password to access privileged operations.</p>
+                    <form id="form-login" onsubmit="handleLogin(event)">
+                        <div style="margin-bottom: var(--space-3);">
+                            <label for="login-email">Email Address</label>
+                            <input type="email" id="login-email" required placeholder="user@example.com">
+                        </div>
+                        <div style="margin-bottom: var(--space-4);">
+                            <label for="login-password">Password</label>
+                            <input type="password" id="login-password" required placeholder="••••••••">
+                        </div>
+                        <button type="submit" class="btn btn-primary" style="width: 100%; min-height: 44px;">Sign In</button>
+                    </form>
+                </div>
+
+                <!-- PROFILE VIEW -->
+                <div id="auth-profile-view" style="display: none;">
+                    <div style="display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4);">
+                        <div>
+                            <span style="font-size: var(--font-size-xs); color: var(--text-muted);">ACTIVE USER:</span>
+                            <div id="profile-email-val" style="font-size: var(--font-size-lg); font-weight: var(--font-weight-bold); font-family: var(--font-family-mono); color: var(--text-primary);">admin@pareo.local</div>
+                        </div>
+                        <div>
+                            <span style="font-size: var(--font-size-xs); color: var(--text-muted);">SYSTEM ROLE:</span>
+                            <div style="margin-top: 4px;"><span id="profile-role-val" class="role-badge role-badge-admin">ADMIN</span></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: var(--space-2);">
+                        <button class="btn btn-danger" onclick="handleLogout()" style="width: 100%; min-height: 44px;">Sign Out</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

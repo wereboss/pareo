@@ -22,14 +22,34 @@ Tasks within each queue run sequentially to protect hardware resources, while se
 *   **Orphan Recovery:** On server boot, any task left in a "Running" state (due to abrupt server termination or power outage) is inspected; active detached processes continue running, while interrupted tasks are marked as `Failed (Interrupted)` and unresolved `Pending` tasks are automatically restored and re-queued.
 *   **Interactive Task Retry:** Failed or interrupted tasks can be retried directly from the UI, resetting their logs and queueing them back into the execution flow.
 
-### 3. Real-Time Server-Sent Events (SSE) Bus
+### 3. Real-Time Server-Sent Events (SSE) Bus & Telemetry Engine
 *   **Zero HTTP Polling:** Pareo V2 replaces 1000ms polling loops with a persistent Server-Sent Events (SSE) stream (`GET /api/stream/events`).
-*   **Push-Based Streaming:** Real-time task state transitions, incremental terminal stdout/stderr chunks, and live queue depth counts are pushed instantly from server memory to the browser.
+*   **Push-Based Streaming:** Real-time task state transitions, incremental terminal stdout/stderr chunks, live queue depth counts, and continuous host telemetry metrics are pushed reactively from server memory to the browser.
+*   **Host System & Queue Telemetry:** Continuous 2.0s background sampling of CPU load averages, cores, and %, memory allocation from `/proc/meminfo`, disk utilization across allowed root boundaries, and live worker slot saturation per queue channel.
 
-### 4. Bespoke Dual-Theme UI System
+### 4. Email Authentication, Sessions & Role-Based Access Control (RBAC)
+*   **PBKDF2-HMAC-SHA256 Cryptography:** Secure password hashing with 100,000 iterations, 16-byte cryptographically secure salts, and constant-time verification (`hmac.compare_digest`).
+*   **Hierarchical Roles (`Admin`, `Operator`, `Viewer`):**
+    *   **`Admin`:** Complete system control, user provisioning, batch operations, daemon control, and server configuration.
+    *   **`Operator`:** Task submission, batch queue execution, retry, cancel, and utility execution.
+    *   **`Viewer`:** Read-only visibility over tasks, logs, telemetry, and processes without mutation privileges.
+*   **Flexible Token Extraction:** Authenticates via `Authorization: Bearer <token>`, `X-Pareo-Auth` header, or `?token=` query parameter for SSE streams.
+*   **Frictionless LAN Fallback:** If zero user accounts exist in the database, Pareo runs in zero-friction mode, allowing immediate out-of-the-box local operation without login barriers.
+
+### 5. Interactive Batch Queue Management & Floating Action Dock
+*   **Multi-Select Task Selection:** Bulk selection via desktop table header or mobile quick-select toolbar.
+*   **Floating Action Dock:** Accessible thumb-zone floating dock (`.batch-action-dock`) with live selection counters and haptic feedback (`navigator.vibrate`).
+*   **Batch Operations:** One-click batch cancel, batch retry, and batch purge over REST endpoints (`/api/tasks/batch/*`).
+
+### 6. Cross-Platform Progressive Web App (PWA) & Mobile Ergonomics
+*   **Installable App Shell:** Web App Manifest (`manifest.json`) and Service Worker (`sw.js`) supporting standalone display on iOS Safari and Android Chrome.
+*   **Offline Mode:** Service worker app-shell caching with dynamic online/offline status banner.
+*   **Mobile Ergonomics:** Strict adherence to minimum 44px touch targets, safe-area insets (`env(safe-area-inset-bottom)`), bottom-sheet modal dialogues with drag handles, and thumb-friendly navigation.
+
+### 7. Bespoke Dual-Theme UI System
 *   **"Sony's Wipeout":** Inspired by *The Designers Republic* (tDR) anti-gravity racing aesthetic. Features a sleek cockpit obsidian palette (`#07090e`), carbon surfaces, crisp technical typography, angled chamfered HUD geometry, and electric cyan (`#00f0ff`), neon orange (`#ff5500`), and acid yellow (`#eaff00`) telemetry accents.
 *   **"Fallout game's Atompunk":** Inspired by RobCo Industries Pip-Boy 3000 CRT terminals. Features glowing phosphor green (`#1aff80`) on deep vacuum tube black/olive (`#050b07`), subtle horizontal CRT scanlines, ambient phosphor bloom glow, analog meters, and vintage monospace readouts.
-*   **Responsive Layout & PWA:** Automatically transforms into a mobile card view (<640px) with thumb-zone bottom navigation and >=44px touch targets. Cross-platform PWA compatibility (iOS Safari safe-area insets & Android Chrome standalone install) scheduled for MVP 2.
+*   **Responsive Layout:** Automatically transforms into a mobile card view (<640px) with thumb-zone bottom navigation and >=44px touch targets.
 
 ### 5. Interactive Utilities & Switchboard
 *   **System Switchboard:** A physical-like grid of immediate execution buttons (e.g., check server uptime, check disk usage, start/stop a VPN). Supports:
@@ -97,8 +117,23 @@ pareo/
 
 ## 🔌 API Reference
 
-### Real-Time Streaming
-*   `GET /api/stream/events` - SSE endpoint streaming `task_update`, `task_output`, and `task_counts` events.
+### Real-Time Streaming & Telemetry
+*   `GET /api/stream/events` - SSE endpoint streaming `connected`, `task_counts`, `task_update`, `task_output`, and `telemetry` events.
+*   `GET /api/telemetry` - Returns current host CPU, RAM, disk, and queue saturation metrics.
+
+### Authentication & Access Control (MVP 2)
+*   `GET /api/auth/status` - Checks initialization status and registered user count.
+*   `POST /api/auth/setup-admin` - Initializes the root administrator account (one-time setup).
+*   `POST /api/auth/register` - Registers a new user account (`Admin`, `Operator`, `Viewer`). Requires Admin role.
+*   `POST /api/auth/login` - Authenticates credentials and issues an active session token.
+*   `POST /api/auth/logout` - Revokes current session token.
+*   `GET /api/auth/me` - Retrieves authenticated user profile and assigned role.
+*   `GET /api/auth/verify` - Confirms token validity or verifies frictionless LAN mode.
+
+### Batch Queue Operations (MVP 2)
+*   `POST /api/tasks/batch/cancel` - Cancels multiple pending/running tasks simultaneously.
+*   `POST /api/tasks/batch/retry` - Resets and re-queues multiple failed or cancelled tasks.
+*   `POST /api/tasks/batch/purge` - Purges specified tasks from history.
 
 ### Configuration & Utilities
 *   `GET /api/config/ffmpeg` - Retrieves media conversion profiles.
@@ -181,4 +216,4 @@ pareo/
     ```text
     http://<YOUR_HOST_IP>:9046/
     ```
-    *(In MVP 1, local access is completely frictionless with no authentication required).*
+    *(In MVP 1, local access is completely frictionless with no authentication required. In MVP 2, once an administrator account is initialized via the UI or `POST /api/auth/setup-admin`, operations enforce role-based authentication).*

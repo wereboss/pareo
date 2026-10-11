@@ -60,5 +60,9 @@ class Broadcaster:
             "pending": pending
         })
 
+    def broadcast_telemetry(self, telemetry_data: dict):
+        self._publish_event("telemetry", telemetry_data)
+
 # Global singleton broadcaster instance
 broadcaster = Broadcaster()
+

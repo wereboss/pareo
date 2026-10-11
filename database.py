@@ -1,6 +1,11 @@
 import sqlite3
-from datetime import datetime
+import hashlib
+import secrets
+import hmac
+import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional, Dict, Any, List
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_FILE = BASE_DIR / "pareo.db"
@@ -40,6 +45,28 @@ def init_db():
                 PRIMARY KEY (library_name, subpath, deep_scan)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id TEXT PRIMARY KEY,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'Viewer',
+                created_at TEXT NOT NULL,
+                last_login TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                last_active TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES users(user_id) ON DELETE CASCADE
+            )
+        """)
         conn.commit()
         
         # Ensure queue_name column exists for older databases (migration fallback)
@@ -73,6 +100,10 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_queue_status ON tasks(queue_name, status);")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_start_time ON tasks(start_time DESC);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);")
         conn.commit()
 
 def vacuum_db():
@@ -254,3 +285,213 @@ def set_cached_library(library_name: str, subpath: str, deep_scan: bool, cache_d
             (library_name, subpath, ds_val, cache_data, cached_at)
         )
         conn.commit()
+
+# --- AUTHENTICATION & USER MANAGEMENT (MVP 2) ---
+
+def hash_password(password: str, salt: Optional[str] = None) -> tuple:
+    """Hashes a password with PBKDF2-HMAC-SHA256 (100,000 iterations)."""
+    if salt is None:
+        salt_bytes = secrets.token_bytes(16)
+        salt_hex = salt_bytes.hex()
+    else:
+        salt_hex = salt
+        salt_bytes = bytes.fromhex(salt_hex)
+    hash_bytes = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, 100000)
+    return hash_bytes.hex(), salt_hex
+
+def verify_password(password: str, salt_hex: str, hash_hex: str) -> bool:
+    """Verifies a password using constant-time comparison against PBKDF2-HMAC-SHA256."""
+    computed_hash, _ = hash_password(password, salt=salt_hex)
+    return hmac.compare_digest(computed_hash, hash_hex)
+
+def create_user(email: str, password: str, role: str = "Viewer") -> dict:
+    """Creates a new user record with salted PBKDF2 hash."""
+    clean_email = email.strip().lower()
+    hash_hex, salt_hex = hash_password(password)
+    user_id = str(uuid.uuid4())
+    now = datetime.utcnow().isoformat()
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO users (user_id, email, password_hash, salt, role, created_at, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
+            """,
+            (user_id, clean_email, hash_hex, salt_hex, role, now)
+        )
+        conn.commit()
+    return {
+        "user_id": user_id,
+        "email": clean_email,
+        "role": role,
+        "created_at": now,
+        "last_login": None,
+        "is_active": 1
+    }
+
+def get_user_by_email(email: str) -> Optional[dict]:
+    """Retrieves user by case-insensitive email."""
+    if not email:
+        return None
+    clean_email = email.strip().lower()
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("SELECT * FROM users WHERE lower(email) = ?", (clean_email,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except sqlite3.OperationalError:
+        return None
+
+def get_user_by_id(user_id: str) -> Optional[dict]:
+    """Retrieves user by user_id."""
+    if not user_id:
+        return None
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    except sqlite3.OperationalError:
+        return None
+
+def count_users() -> int:
+    """Returns the total number of registered users."""
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("SELECT COUNT(*) as count FROM users")
+            row = cur.fetchone()
+            return row["count"] if row else 0
+    except sqlite3.OperationalError:
+        try:
+            init_db()
+            with get_conn() as conn:
+                cur = conn.execute("SELECT COUNT(*) as count FROM users")
+                row = cur.fetchone()
+                return row["count"] if row else 0
+        except sqlite3.OperationalError:
+            return 0
+
+def update_user_last_login(user_id: str):
+    """Updates the last_login timestamp for a user."""
+    now = datetime.utcnow().isoformat()
+    try:
+        with get_conn() as conn:
+            conn.execute("UPDATE users SET last_login = ? WHERE user_id = ?", (now, user_id))
+            conn.commit()
+    except sqlite3.OperationalError:
+        pass
+
+def list_users() -> List[dict]:
+    """Lists all users without password hashes or salts."""
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("SELECT user_id, email, role, created_at, last_login, is_active FROM users ORDER BY created_at ASC")
+            return [dict(row) for row in cur.fetchall()]
+    except sqlite3.OperationalError:
+        return []
+
+# --- SESSION MANAGEMENT (MVP 2) ---
+
+def create_session(user_id: str, ttl_hours: int = 48) -> dict:
+    """Issues a cryptographically secure session token with TTL (default 48h)."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    created_at = now.isoformat()
+    expires_at = (now + timedelta(hours=ttl_hours)).isoformat()
+    last_active = created_at
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO sessions (token, user_id, created_at, expires_at, last_active)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (token, user_id, created_at, expires_at, last_active)
+        )
+        conn.commit()
+    return {
+        "token": token,
+        "user_id": user_id,
+        "created_at": created_at,
+        "expires_at": expires_at,
+        "last_active": last_active
+    }
+
+def get_session(token: str) -> Optional[dict]:
+    """Retrieves session if valid and not expired, updating last_active."""
+    if not token:
+        return None
+    now = datetime.utcnow().isoformat()
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("SELECT * FROM sessions WHERE token = ?", (token,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            session = dict(row)
+            if session["expires_at"] < now:
+                conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+                conn.commit()
+                return None
+            conn.execute("UPDATE sessions SET last_active = ? WHERE token = ?", (now, token))
+            conn.commit()
+            session["last_active"] = now
+            return session
+    except sqlite3.OperationalError:
+        return None
+
+def delete_session(token: str) -> bool:
+    """Revokes a session token."""
+    if not token:
+        return False
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            conn.commit()
+            return cur.rowcount > 0
+    except sqlite3.OperationalError:
+        return False
+
+def cleanup_expired_sessions() -> int:
+    """Removes all expired sessions."""
+    now = datetime.utcnow().isoformat()
+    try:
+        with get_conn() as conn:
+            cur = conn.execute("DELETE FROM sessions WHERE expires_at < ?", (now,))
+            conn.commit()
+            return cur.rowcount
+    except sqlite3.OperationalError:
+        return 0
+
+# --- BATCH TASK OPERATIONS (MVP 2) ---
+
+def batch_cancel_tasks(task_ids: List[str]) -> List[str]:
+    """Marks pending/running tasks in the list as Cancelled."""
+    if not task_ids:
+        return []
+    now = datetime.now().isoformat()
+    cancelled = []
+    with get_conn() as conn:
+        for tid in task_ids:
+            cur = conn.execute(
+                "UPDATE tasks SET status = 'Cancelled', end_time = ? WHERE task_id = ? AND status IN ('Pending', 'Running')",
+                (now, tid)
+            )
+            if cur.rowcount > 0:
+                cancelled.append(tid)
+        conn.commit()
+    return cancelled
+
+def batch_purge_tasks(task_ids: List[str]) -> List[str]:
+    """Deletes finished, failed, or cancelled tasks."""
+    if not task_ids:
+        return []
+    purged = []
+    with get_conn() as conn:
+        for tid in task_ids:
+            cur = conn.execute(
+                "DELETE FROM tasks WHERE task_id = ? AND status NOT IN ('Pending', 'Running')",
+                (tid,)
+            )
+            if cur.rowcount > 0:
+                purged.append(tid)
+        conn.commit()
+    return purged
